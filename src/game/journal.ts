@@ -264,9 +264,8 @@ export class Journal {
     }
     if (f.kind === 'story') this.say(`<b>${f.title}</b><span>${f.blurb}</span>`);
     else if (first) this.say(`<b>${f.kind === 'skill' ? 'A new trick: Meow' : `Found: ${f.title.toLowerCase()}`}</b><span>${f.blurb}</span>`);
-    // A place with something to show turns the camera to it. Stories do so on every visit;
-    // other finds only the first time.
-    const view = f.kind === 'story' || first ? this.o.view(f.id) : null;
+    // A place with something to show turns the camera to it, on every visit.
+    const view = this.o.view(f.id);
     if (view) {
       this.moment = { id: f.id, t: 0, settled: false, long: view.pitch !== undefined };
       this.o.controls.target = null;
