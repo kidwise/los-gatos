@@ -386,26 +386,39 @@ for (const way of ways) {
   });
 }
 
-// Mark the hand-built landmarks.
+// Mark the hand-built landmarks, and work out which way each one's front faces.
 for (const hero of region.heroes ?? []) {
-  const el = raw.elements.find((e) => e.tags?.name === hero.near);
-  const at = el && (el.type === 'node' ? nodes.get(el.id) : pointsOf(el)[0]);
-  if (!at) {
-    console.warn(`  hero "${hero.id}": nothing on the map is named "${hero.near}"`);
-    continue;
-  }
-  let best = null, bestD = 30;
-  for (const b of buildings) {
-    const d = Math.hypot(b.cx - at[0], b.cz - at[1]);
-    if (d < bestD) [best, bestD] = [b, d];
+  let best = null;
+  if (hero.way) best = buildings.find((b) => b.id === hero.way) ?? null;
+  else {
+    const el = raw.elements.find((e) => e.tags?.name === hero.near);
+    if (el?.type === 'way' && el.tags.building) best = buildings.find((b) => b.id === el.id) ?? null;
+    else {
+      const at = el && (el.type === 'node' ? nodes.get(el.id) : pointsOf(el)[0]);
+      let bestD = 30;
+      for (const b of buildings) {
+        const d = at ? Math.hypot(b.cx - at[0], b.cz - at[1]) : Infinity;
+        if (d < bestD) [best, bestD] = [b, d];
+      }
+    }
   }
   if (!best) {
-    console.warn(`  hero "${hero.id}": no building within 30 m of "${hero.near}"`);
+    console.warn(`  hero "${hero.id}": no matching building`);
     continue;
+  }
+  // The front looks toward the nearest point of the named street, or of any street.
+  let toward = null, towardD = Infinity;
+  for (const l of lines) {
+    if (!STREET.has(l.kind) || (hero.faces && l.name !== hero.faces)) continue;
+    for (const p of resample(l.pts, 3)) {
+      const d = Math.hypot(p[0] - best.cx, p[1] - best.cz);
+      if (d < towardD) [toward, towardD] = [p, d];
+    }
   }
   best.hero = hero.id;
   best.fronts = [];
-  console.log(`  hero "${hero.id}" -> building ${best.id}, ${bestD.toFixed(1)} m from "${hero.near}", ${best.ring.length / 2} corners`);
+  if (toward) best.face = r2(Math.atan2(toward[0] - best.cx, toward[1] - best.cz));
+  console.log(`  hero "${hero.id}" -> building ${best.id}, ${best.ring.length / 2} corners, front ${Math.round(towardD)} m from ${hero.faces ?? 'the nearest street'}`);
 }
 
 // ---------- Ground cover ----------
@@ -539,7 +552,9 @@ const props = { lamps: [], planters: [], benches: [], cars: [], cedar: null, fou
         let kind = null;
         if (downtown) kind = j % 8 === 0 || j % 8 === 4 ? 'tree' : j % 8 === 2 ? 'lamp' : j % 8 === 6 ? (r < 0.45 ? 'planter' : r < 0.7 ? 'bench' : null) : null;
         else kind = j % 2 === 0 && r < 0.7 ? 'tree' : null;
-        if (kind && clear(x, z, l, kind === 'bench' ? 1.3 : 0.9, 0.2)) {
+        // Nothing stands right in front of a landmark's entrance.
+        const atLandmark = buildings.some((b) => b.hero && Math.hypot(b.cx - x, b.cz - z) < 26);
+        if (kind && !atLandmark && clear(x, z, l, kind === 'bench' ? 1.3 : 0.9, 0.2)) {
           const y = r2(ground(x, z));
           if (kind === 'tree') trees.push(r2(x), y, r2(z), r2(1 + r * 0.25));
           else if (kind === 'lamp') props.lamps.push(r2(x), y, r2(z), r2(along));
@@ -585,7 +600,11 @@ if (existsSync(overlayPath)) {
   };
   for (const s of overlay.spots ?? []) {
     let at = null;
-    if (s.near) {
+    if (s.way) {
+      // In front of one particular building: its centre, which is then moved out to clear ground below.
+      const b = buildings.find((x) => x.id === s.way);
+      if (b) at = [b.cx + Math.sin(b.face ?? 0) * 30, b.cz + Math.cos(b.face ?? 0) * 30];
+    } else if (s.near) {
       const el = raw.elements.find((e) => e.tags?.name === s.near);
       if (el?.type === 'node') at = nodes.get(el.id);
       else if (el?.type === 'way') {

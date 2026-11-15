@@ -3,6 +3,7 @@
   "spots": [
     { "id": "bridge", "kind": "story", "title": "Main Street Bridge", "bridge": "East Main Street", "blurb": "Today's bridge crosses the freeway. Until the 1950s, an arched bridge of 1906 crossed the creek here." },
     { "id": "mill", "kind": "story", "title": "The Mill Annex", "near": "Forbes Mill Museum", "blurb": "All that remains of the four-storey flour mill James Alexander Forbes built in the 1850s." },
+    { "id": "school", "kind": "story", "title": "The High School", "way": 82710819, "blurb": "The white main building was dedicated in 1925, designed by W. H. Weeks, on its rise of lawn above Main Street." },
     { "id": "plaza", "kind": "skill", "item": "meow", "title": "Town Plaza", "near": "Town Plaza Park", "blurb": "Under the old cedar, you find your voice. Tap Meow and people nearby stop to say hello." },
     { "id": "theatre", "kind": "wear", "item": "beret", "title": "A beret", "near": "Los Gatos Theatre", "blurb": "Left on the kerb outside the theatre. It fits rather well." },
     { "id": "library", "kind": "wear", "item": "glasses", "title": "Reading glasses", "near": "Los Gatos Public Library", "blurb": "Someone's spare pair, by the library steps. Very distinguished." },

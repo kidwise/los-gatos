@@ -18,7 +18,7 @@ interface Pack {
   terrain: { x0: number; z0: number; cell: number; cols: number; rows: number; heights: number[] };
   roads: Road[];
   water: { width: number; pts: number[] }[];
-  buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string }[];
+  buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string; face?: number }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
   props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; cedar: number[] | null; fountain: number[] | null };
@@ -363,7 +363,7 @@ export async function loadRegion(id: string): Promise<World> {
     const n = b.ring.length / 2;
     if (b.hero && HEROES[b.hero]) {
       // A hand-built landmark stands on this footprint instead of a generic block.
-      HEROES[b.hero](kit, b.ring, b.base);
+      HEROES[b.hero](kit, b.ring, b.base, b.face);
       for (let i = 0; i < n; i++) {
         walls.push({ ax: b.ring[i * 2], az: b.ring[i * 2 + 1], bx: b.ring[((i + 1) % n) * 2], bz: b.ring[((i + 1) % n) * 2 + 1], y: NaN });
       }
