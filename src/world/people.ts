@@ -313,6 +313,13 @@ export class People {
     this.draw();
   }
 
+  /** How many people are within a distance of a point. */
+  countNear(x: number, z: number, radius: number): number {
+    let n = 0;
+    for (const p of this.folk) if (Math.abs(p.x - x) < radius && Math.abs(p.z - z) < radius) n++;
+    return n;
+  }
+
   /** A meow: walkers within earshot stop and turn to the cat for a few seconds. Returns how many heard. */
   call(x: number, z: number, radius: number): number {
     let heard = 0;

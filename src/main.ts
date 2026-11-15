@@ -8,6 +8,7 @@ import { Cat, CAT_SCALE, type DebugPose } from './cat/Cat';
 import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
 import { Journal } from './game/journal';
+import { Sound, type Ambience } from './game/sound';
 import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
@@ -133,6 +134,21 @@ async function start(): Promise<void> {
   };
   controls.onFirstInput = () => document.getElementById('hint')?.classList.add('gone');
 
+  // Sound starts with the first touch, which is when browsers allow it.
+  const sound = new Sound();
+  const wake = () => sound.start();
+  window.addEventListener('pointerdown', wake);
+  window.addEventListener('keydown', wake);
+  const soundButton = document.getElementById('sound-btn') as HTMLButtonElement;
+  const showSound = () => (soundButton.textContent = sound.muted ? 'Sound off' : 'Sound on');
+  soundButton.onclick = () => {
+    sound.toggleMute();
+    showSound();
+  };
+  showSound();
+  let around: Ambience = { water: 0, traffic: 0, town: 0, green: 0, train: 0 };
+  let listenIn = 0;
+
   const place = (ease: number) => {
     pos.y = THREE.MathUtils.lerp(pos.y, world.heightAt(pos.x, pos.z, pos.y), ease);
     cat.root.position.copy(pos);
@@ -180,7 +196,11 @@ async function start(): Promise<void> {
       view: (id) => world.ghosts.find((g) => g.spot === id)?.view ?? null,
       onSit: () => cat.sitNow(),
       onWear: (item, on) => cat.wear(item, on),
-      onMeow: () => world.charm(pos),
+      onMeow: () => {
+        world.charm(pos);
+        sound.meow();
+      },
+      onFound: () => sound.chime(),
     });
     scene.add(journal.group);
   }
@@ -275,6 +295,13 @@ async function start(): Promise<void> {
       pinInk.opacity = far;
       pinLight.opacity = far;
     }
+    // What the cat can hear is checked a few times a second, not every frame.
+    listenIn -= dt;
+    if (listenIn <= 0) {
+      listenIn = 0.25;
+      around = world.ambience(pos);
+    }
+    sound.update(dt, around, moveDir ? speed : 0);
     aimSun();
     openHole(dt);
     composer.render();

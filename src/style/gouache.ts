@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { P } from './palette';
 
-export const MAX_REVEALS = 16;
-
 // Shared by every painted surface, so the whole scene shifts together.
 export const gouacheUniforms = {
   uPaper: { value: new THREE.Color(P.paper) },
@@ -15,11 +13,8 @@ export const gouacheUniforms = {
   uFade: { value: new THREE.Vector2(35, 45) },
   // A round window cut through anything that roofs over the cat: screen position and radius in pixels.
   uHole: { value: new THREE.Vector3(0, 0, 0) },
-  // Where the world has been painted. Each entry is a centre (x, z), a radius, and how far the wash
-  // has spread so far (0 to 1). Everything else is drawn in pencil. uRevealAll paints everything.
-  uReveal: { value: Array.from({ length: MAX_REVEALS }, () => new THREE.Vector4()) },
-  uRevealCount: { value: 0 },
-  uRevealAll: { value: 1 },
+  // 1 draws the world painted; 0 draws it as a pencil sketch, which is how sketchbook pages are made.
+  uPainted: { value: 1 },
   uDpr: { value: 1 },
 };
 
@@ -67,15 +62,7 @@ const PAINT = /* glsl */ `
       gCol = mix(gCol, gBase * uLightTint * 1.09, smoothstep(0.84 + gW, 0.88 + gW, gLit));
     #endif
     #ifndef GOUACHE_PAINTED
-      // How painted this point is: inside any wash that has reached it.
-      float gPaint = uRevealAll;
-      float gRag = (gNoise(vGWorld * 0.09) - 0.5) * 18.0 + (gNoise(vGWorld * 0.7) - 0.5) * 2.2;
-      for (int i = 0; i < ${MAX_REVEALS}; i++) {
-        if (i >= uRevealCount) break;
-        vec4 r = uReveal[i];
-        float reach = r.z * r.w;
-        gPaint = max(gPaint, (1.0 - smoothstep(reach - 4.0, reach, distance(vGWorld.xz, r.xy) + gRag * r.w)) * step(0.001, r.w));
-      }
+      float gPaint = uPainted;
       // Unpainted, it is a pencil drawing: paper, a graphite wash for darker things, and hatching in shade.
       float gLum = dot(gBase, vec3(0.3, 0.59, 0.11));
       vec2 gPx = gl_FragCoord.xy / uDpr;
@@ -150,9 +137,7 @@ export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
         uniform vec3 uPaper, uLightTint, uHalfTint, uShadowTint;
         uniform vec2 uFade, uFadeCenter, uFadeHalf;
         uniform vec3 uHole;
-        uniform vec4 uReveal[${MAX_REVEALS}];
-        uniform int uRevealCount;
-        uniform float uRevealAll, uDpr;
+        uniform float uPainted, uDpr;
         // Passed on in the alpha channel so the paper pass can draw pencil lines where nothing is painted.
         float gPaintOut = 1.0;
         ${NOISE}`,

@@ -48,6 +48,8 @@ export interface JournalOptions {
   onSit: () => void;
   onWear: (item: string, on: boolean) => void;
   onMeow: () => void;
+  /** Something was found for the first time. */
+  onFound: () => void;
 }
 
 const SEE = 55; // rings are invisible until the cat is this close
@@ -201,7 +203,7 @@ export class Journal {
 
     if (this.holdUntil && this.time > this.holdUntil) {
       this.holdUntil = 0;
-      gouacheUniforms.uRevealAll.value = 1;
+      gouacheUniforms.uPainted.value = 1;
       this.leaveFinder();
     }
   }
@@ -233,6 +235,7 @@ export class Journal {
   private arrive(f: Find): void {
     const first = !this.state.found.includes(f.id);
     if (first) {
+      this.o.onFound();
       this.state.found.push(f.id);
       if (f.kind === 'wear' && f.item) {
         this.state.wearing.push(f.item);
@@ -307,7 +310,7 @@ export class Journal {
   private draw(): void {
     if (!this.active || this.captureIn || this.holdUntil) return;
     // Turn the view to pencil; the sketch is taken a couple of frames later, once it has been drawn that way.
-    gouacheUniforms.uRevealAll.value = 0;
+    gouacheUniforms.uPainted.value = 0;
     this.captureIn = 3;
   }
 

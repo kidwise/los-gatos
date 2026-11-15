@@ -667,6 +667,14 @@ export async function loadRegion(id: string): Promise<World> {
     start = { x: main.pts[0] - (dx / len) * 14, z: main.pts[2] - (dz / len) * 14 + 4, heading: Math.atan2(dx, dz) };
   }
 
+  // Points along open water and along the freeway, for judging how near each is.
+  const waterPts: number[] = [];
+  for (const w of pack.water) for (let i = 0; i < w.pts.length; i += 3) waterPts.push(w.pts[i], w.pts[i + 2]);
+  const freewayPts: number[] = [];
+  for (const r of pack.roads) {
+    if (r.kind === 'motorway') for (let i = 0; i < r.pts.length; i += 3) freewayPts.push(r.pts[i], r.pts[i + 2]);
+  }
+
   // Pencil ghosts of what used to stand at two of the sketch spots.
   const ghosts: Ghost[] = [];
   const has = (id: string) => pack.spots?.some((s) => s.id === id);
@@ -721,6 +729,21 @@ export async function loadRegion(id: string): Promise<World> {
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
+    ambience(pos) {
+      const nearest = (pts: number[]) => {
+        let best = Infinity;
+        for (let i = 0; i < pts.length; i += 2) best = Math.min(best, Math.abs(pts[i] - pos.x) + Math.abs(pts[i + 1] - pos.z));
+        return best;
+      };
+      const town = Math.min(1, people.countNear(pos.x, pos.z, 35) / 14);
+      return {
+        water: 1 - THREE.MathUtils.smoothstep(nearest(waterPts), 6, 60),
+        traffic: 1 - THREE.MathUtils.smoothstep(nearest(freewayPts), 12, 130),
+        town,
+        green: Math.max(0.12, 1 - town * 1.6),
+        train: 0,
+      };
+    },
     placeName(x, z) {
       // The nearest named street or trail.
       let best = pack.title, bestD = 60;

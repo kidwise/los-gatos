@@ -130,13 +130,17 @@ export class Cat {
     part(new THREE.BoxGeometry(0.024, 0.004, 0.004), brass, glasses, 0, 0.017, 0.08);
 
     const daisies = new THREE.Group();
-    daisies.position.set(0, 0.034, 0.275);
-    daisies.rotation.x = Math.PI / 2 - 0.55;
-    this.hips.add(daisies);
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2;
-      part(sphere, white, daisies, Math.cos(a) * 0.073, Math.sin(a) * 0.073, 0, 0.019);
-      part(sphere, yellow, daisies, Math.cos(a) * 0.086, Math.sin(a) * 0.086, 0, 0.008);
+    // Worn as a crown round the ears, where it shows from every side.
+    daisies.position.set(0, 0.05, -0.004);
+    daisies.rotation.x = Math.PI / 2 + 0.12;
+    daisies.scale.setScalar(0.9);
+    this.head.add(daisies);
+    const leaf = gouache({ color: P.leafC, local: true, painted: true });
+    part(new THREE.TorusGeometry(0.07, 0.016, 6, 18), leaf, daisies, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.2;
+      part(sphere, white, daisies, Math.cos(a) * 0.082, Math.sin(a) * 0.082, 0, 0.024, 0.024, 0.012);
+      part(sphere, yellow, daisies, Math.cos(a) * 0.082, Math.sin(a) * 0.082, 0.008, 0.01);
     }
 
     this.outfits = { beret, glasses, daisies };

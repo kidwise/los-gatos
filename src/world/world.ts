@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { gouacheUniforms } from '../style/gouache';
 import { buildCorner, type Collider } from './corner';
+import type { Ambience } from '../game/sound';
 import type { Ghost } from './ghosts';
 import { CORNER_WALKWAYS, People } from './people';
 
@@ -23,6 +24,8 @@ export interface World {
   charm(pos: THREE.Vector3): number;
   /** A name for wherever this is. */
   placeName(x: number, z: number): string;
+  /** What surrounds this point, for sound. */
+  ambience(pos: THREE.Vector3): Ambience;
   /** Things that once stood here, which draw themselves in pencil at their sketch spot. */
   ghosts: Ghost[];
 }
@@ -93,6 +96,7 @@ export function cornerWorld(): World {
     spots: [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     placeName: () => 'The Corner',
+    ambience: (pos) => ({ water: 0, traffic: 0, town: Math.min(1, 0.4 + people.countNear(pos.x, pos.z, 30) / 12), green: 0.35, train: 0 }),
     ghosts: [],
   };
 }
