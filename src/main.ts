@@ -104,6 +104,7 @@ async function start(): Promise<void> {
   let heading = num('heading', world.start.heading);
   let speed = 0;
   let stuck = 0;
+  let still = 0;
   const dir = new THREE.Vector3();
   const focus = new THREE.Vector3();
   const before = new THREE.Vector3();
@@ -163,6 +164,7 @@ async function start(): Promise<void> {
       heightAt: (x, z) => world.heightAt(x, z, 1000),
       home: { x: pos.x, z: pos.z },
       onSit: () => cat.sitNow(),
+      view: (id) => world.ghosts.find((g) => g.spot === id)?.view ?? null,
     });
     scene.add(sketching.group);
     if (params.get('paint') === 'all') sketching.paintAll();
@@ -246,6 +248,12 @@ async function start(): Promise<void> {
     }
 
     sketching?.update(dt, pos, rig.span);
+    // A ghost draws itself while its spot is being framed, or when the cat sits quietly beside it.
+    still = moveDir ? 0 : still + dt;
+    for (const g of world.ghosts) {
+      const beside = Math.hypot(g.x - pos.x, g.z - pos.z) < 45 && still > 3;
+      g.update(dt, sketching?.framingId === g.spot || beside || params.get('ghost') === g.spot);
+    }
     rig.update(dt, sketching?.active ? sketching.focus : focus.copy(pos).setY(pos.y + 0.45));
     aimSun();
     openHole(dt);

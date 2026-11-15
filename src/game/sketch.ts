@@ -34,6 +34,8 @@ export interface SketchingOptions {
   home: { x: number; z: number };
   /** Called when the cat should settle down to sketch. */
   onSit: () => void;
+  /** A particular way to frame a spot while sketching it, if it has one. */
+  view: (spotId: string) => { x: number; y: number; z: number; span: number; yaw: number | null } | null;
 }
 
 const HOME_RADIUS = 26;
@@ -118,6 +120,11 @@ export class Sketching {
     this.bookButton.onclick = () => this.openBook();
     this.refreshBookButton();
     this.push();
+  }
+
+  /** The spot being framed right now, if any. */
+  get framingId(): string | null {
+    return this.framing?.id ?? null;
   }
 
   private get done(): number {
@@ -226,8 +233,11 @@ export class Sketching {
     this.framing = spot;
     this.focus.set(spot.x, this.o.heightAt(spot.x, spot.z) + 1, spot.z);
     this.spanBefore = this.o.rig.span;
-    this.o.rig.span = FRAME_SPAN;
+    const view = this.o.view(spot.id);
+    if (view) this.focus.set(view.x, view.y, view.z);
+    this.o.rig.span = view?.span ?? FRAME_SPAN;
     this.o.rig.zoomBy(1);
+    this.o.rig.turnTo(view?.yaw ?? null);
     this.o.controls.framing = true;
     this.o.controls.target = null;
     this.o.controls.onPan = (dx, dy) => {
@@ -259,6 +269,7 @@ export class Sketching {
     this.o.controls.onPan = null;
     this.o.rig.span = this.spanBefore;
     this.o.rig.zoomBy(1);
+    this.o.rig.turnTo(null);
     this.finder.classList.remove('on');
   }
 

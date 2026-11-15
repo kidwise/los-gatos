@@ -13,7 +13,10 @@ export class CameraRig {
   maxSpan = 70;
   private target = new THREE.Vector3();
   private aspect = 1;
-  private readonly offset = new THREE.Vector3(Math.sin(YAW) * Math.cos(PITCH), Math.sin(PITCH), Math.cos(YAW) * Math.cos(PITCH)).multiplyScalar(DISTANCE);
+  /** Compass direction the camera looks from. It only changes to show something off at a sketch spot. */
+  private yaw = YAW;
+  private yawGoal = YAW;
+  private readonly offset = new THREE.Vector3();
 
   resize(aspect: number): void {
     this.aspect = aspect;
@@ -30,18 +33,26 @@ export class CameraRig {
     this.place();
   }
 
+  /** Swing round to look from another direction, or back to the usual one. */
+  turnTo(yaw: number | null): void {
+    this.yawGoal = yaw ?? YAW;
+  }
+
   update(dt: number, focus: THREE.Vector3): void {
+    const turn = Math.atan2(Math.sin(this.yawGoal - this.yaw), Math.cos(this.yawGoal - this.yaw));
+    this.yaw += turn * (1 - Math.exp(-2.6 * dt));
     this.target.lerp(focus, 1 - Math.exp(-5 * dt));
     this.place();
   }
 
   /** Ground directions for "screen right" and "screen up", for keyboard movement. */
   groundAxes(right: THREE.Vector3, up: THREE.Vector3): void {
-    right.set(Math.cos(YAW), 0, -Math.sin(YAW));
-    up.set(-Math.sin(YAW), 0, -Math.cos(YAW));
+    right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    up.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
   }
 
   private place(): void {
+    this.offset.set(Math.sin(this.yaw) * Math.cos(PITCH), Math.sin(PITCH), Math.cos(this.yaw) * Math.cos(PITCH)).multiplyScalar(DISTANCE);
     this.camera.position.copy(this.target).add(this.offset);
     this.camera.lookAt(this.target);
   }

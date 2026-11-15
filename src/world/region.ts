@@ -3,6 +3,7 @@ import { gouache, gouacheUniforms } from '../style/gouache';
 import { P } from '../style/palette';
 import { GROUND_FLOOR, RECESS, UPPER_FLOOR, storefronts, type Kit } from './buildings';
 import type { Spot } from './corner';
+import { bridgeGhost, millGhost, type Ghost } from './ghosts';
 import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
@@ -578,6 +579,14 @@ export async function loadRegion(id: string): Promise<World> {
     start = { x: main.pts[0] - (dx / len) * 14, z: main.pts[2] - (dz / len) * 14 + 4, heading: Math.atan2(dx, dz) };
   }
 
+  // Pencil ghosts of what used to stand at two of the sketch spots.
+  const ghosts: Ghost[] = [];
+  const has = (id: string) => pack.spots?.some((s) => s.id === id);
+  if (main && has('bridge')) ghosts.push(bridgeGhost('bridge', main.pts, terrainY));
+  const annex = pack.buildings.find((b) => b.hero === 'mill-annex');
+  if (annex && has('mill')) ghosts.push(millGhost('mill', annex.ring, annex.base));
+  for (const g of ghosts) group.add(g.group);
+
   return {
     group,
     start,
@@ -614,6 +623,7 @@ export async function loadRegion(id: string): Promise<World> {
     },
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     spots: pack.spots ?? [],
+    ghosts,
     covered(pos) {
       // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.
       for (const b of bridges) {

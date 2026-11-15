@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { gouacheUniforms } from '../style/gouache';
 import { buildCorner, type Collider } from './corner';
+import type { Ghost } from './ghosts';
 import { CORNER_WALKWAYS, People } from './people';
 
 /** A place the cat can walk around: the style-study corner, or a region built from the real map. */
@@ -18,6 +19,8 @@ export interface World {
   covered(pos: THREE.Vector3): boolean;
   /** Places to sketch. Empty where there is nothing to discover. */
   spots: SketchSpot[];
+  /** Things that once stood here, which draw themselves in pencil at their sketch spot. */
+  ghosts: Ghost[];
 }
 
 export interface SketchSpot {
@@ -82,5 +85,6 @@ export function cornerWorld(): World {
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
     spots: [],
+    ghosts: [],
   };
 }
