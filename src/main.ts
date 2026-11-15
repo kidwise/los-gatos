@@ -18,6 +18,8 @@ import { cornerWorld, type Find, type Ride, type World } from './world/world';
 
 const WALK = 1.9;
 const TROT = 4.4;
+/** Top speed when travelling across the zoomed-out map. */
+const DASH = 26;
 const CAT_RADIUS = 0.2 * CAT_SCALE;
 const SUN = new THREE.Vector3(68, 76, 28).normalize();
 
@@ -143,9 +145,40 @@ async function start(): Promise<void> {
   pos.y = num('y', world.heightAt(pos.x, pos.z, 1000));
 
   controls.groundY = () => pos.y;
+  // A far-off tap is followed along streets and paths, as x, z waypoints still to pass.
+  let path: number[] = [];
   controls.onTap = (p) => {
+    // On the map view, tapping a place already found takes the cat straight there.
+    if (rig.span > 55 && journal) {
+      const reach = rig.span * 0.045;
+      const known = world.spots.find((s) => journal!.isFound(s.id) && Math.hypot(s.x - p.x, s.z - p.z) < reach);
+      if (known) {
+        controls.target = null;
+        travelTo(known.x + 4, known.z);
+        return;
+      }
+    }
     marker.position.set(p.x, world.heightAt(p.x, p.z, pos.y) + 0.12, p.z);
+    marker.scale.setScalar(Math.max(1, rig.span / 30));
     markerLife = 1;
+    path = Math.hypot(p.x - pos.x, p.z - pos.z) > 22 ? world.route(pos.x, pos.z, p.x, p.z) ?? [] : [];
+  };
+
+  // Being carried somewhere: the picture fades to paper, the cat is moved, and it fades back.
+  const fade = document.getElementById('fade') as HTMLDivElement;
+  const travelTo = (x: number, z: number) => {
+    fade.classList.add('on');
+    setTimeout(() => {
+      pos.set(x, 0, z);
+      world.resolve(pos, CAT_RADIUS);
+      pos.y = world.heightAt(pos.x, pos.z, 1000);
+      path = [];
+      controls.target = null;
+      rig.span = 8.5;
+      place(1);
+      rig.snapTo(focus.copy(pos).setY(pos.y + 0.45));
+      fade.classList.remove('on');
+    }, 420);
   };
   controls.onFirstInput = () => document.getElementById('hint')?.classList.add('gone');
 
@@ -241,6 +274,13 @@ async function start(): Promise<void> {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
         journal: (action: 'camera' | 'draw' | 'meow') => journal?.debug(action),
         riding: () => !!riding,
+        tap: (x: number, z: number) => {
+          const p = new THREE.Vector3(x, 0, z);
+          controls.target = p;
+          controls.arriving = true;
+          controls.onTap?.(p);
+        },
+        zoom: (span: number) => (rig.span = span),
         go: (x: number, z: number) => {
           controls.target = new THREE.Vector3(x, 0, z);
           controls.arriving = true;
@@ -338,14 +378,22 @@ async function start(): Promise<void> {
       controls.target = null;
       want = controls.running ? TROT : WALK;
     } else if (controls.target) {
-      dir.set(controls.target.x - pos.x, 0, controls.target.z - pos.z);
+      if (!controls.arriving) path = [];
+      // Drop waypoints as they are reached; a faster cat is allowed to cut each corner wider.
+      while (path.length && Math.hypot(path[0] - pos.x, path[1] - pos.z) < Math.max(1.6, speed * 0.22)) path.splice(0, 2);
+      const far = Math.hypot(controls.target.x - pos.x, controls.target.z - pos.z);
+      if (path.length) dir.set(path[0] - pos.x, 0, path[1] - pos.z);
+      else dir.set(controls.target.x - pos.x, 0, controls.target.z - pos.z);
       const dist = dir.length();
-      if (dist > 0.18) {
+      if (far > 0.18 && dist > 0.01) {
         moveDir = dir.divideScalar(dist);
+        // The wider the view, the faster the cat covers ground: a trot at street level, a dash on the map.
+        const pace = THREE.MathUtils.lerp(TROT, DASH, THREE.MathUtils.smoothstep(rig.span, 26, 190));
         // A far-off finger or tap means hurry; close by, stroll and ease to a stop.
-        want = dist > 5 ? TROT : Math.min(WALK, 0.5 + dist * 1.6);
+        want = far > 5 ? Math.min(pace, TROT + far * 0.9) : Math.min(WALK, 0.5 + far * 1.6);
       } else if (controls.arriving) {
         controls.target = null;
+        path = [];
       }
     }
 
@@ -357,18 +405,25 @@ async function start(): Promise<void> {
       // Slow down through sharp turns so the cat arcs instead of sliding sideways.
       const facing = Math.max(0.15, Math.cos(diff));
       before.copy(pos);
-      pos.addScaledVector(moveDir, speed * facing * dt);
-      world.resolve(pos, CAT_RADIUS);
+      // Move in short steps so that even at a dash the cat cannot pass through a wall.
+      const travel = speed * facing * dt;
+      const steps = Math.max(1, Math.ceil(travel / 0.25));
+      for (let i = 0; i < steps; i++) {
+        pos.addScaledVector(moveDir, travel / steps);
+        world.resolve(pos, CAT_RADIUS);
+      }
       // Give up on a tap the cat cannot reach.
       const progress = Math.hypot(before.x - pos.x, before.z - pos.z) / Math.max(dt, 1e-4);
       stuck = progress < 0.2 ? stuck + dt : 0;
       if (stuck > 0.8 && controls.arriving) {
+        path = [];
         controls.target = null;
         stuck = 0;
       }
     }
     if (!riding) place(0.35);
-    cat.update(dt, moveDir ? speed : 0);
+    // The legs only go so fast; beyond that the cat simply covers more ground.
+    cat.update(dt, moveDir ? Math.min(speed, 7) : 0);
     world.update(dt, pos, moveDir ? speed : 0);
     if (riding) {
       // The ride carries the cat, sitting, wherever it goes.
@@ -387,7 +442,7 @@ async function start(): Promise<void> {
 
     if (markerLife > 0) {
       markerLife = Math.max(0, markerLife - dt * 1.4);
-      marker.scale.setScalar(1 + (1 - markerLife) * 1.2);
+      marker.scale.setScalar(Math.max(1, rig.span / 30) * (1 + (1 - markerLife) * 1.2));
       marker.material.opacity = markerLife * 0.8;
     }
 

@@ -107,6 +107,8 @@
       #ride-btn.on { display: block; }
       body.framing #ride-btn { display: none; }
       body.framing #exit-btn { display: none; }
+      #fade { position: fixed; inset: 0; background: #f3ecdf; opacity: 0; pointer-events: none; transition: opacity 0.38s; }
+      #fade.on { opacity: 1; }
       #intro { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s; font-family: "Playfair Display", Georgia, serif; color: #3a3542; text-align: center; }
       #intro.on { opacity: 1; }
       #intro .intro-title { position: absolute; left: 0; right: 0; top: 16%; text-shadow: 0 0 10px #f3ecdf, 0 0 26px #f3ecdf, 0 0 40px #f3ecdf; }
@@ -142,6 +144,7 @@
     <button id="sound-btn"></button>
     <button id="exit-btn"></button>
     <button id="ride-btn"></button>
+    <div id="fade"></div>
     <div id="intro">
       <div class="intro-title"><span>Los Gatos</span><em>A Wandering</em></div>
       <div class="intro-go">Touch anywhere to wake up</div>

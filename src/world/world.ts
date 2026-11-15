@@ -23,6 +23,8 @@ export interface World {
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
   /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
   covered(pos: THREE.Vector3): boolean;
+  /** A way along streets and paths between two points, as x, z pairs; null if there is none. */
+  route(fromX: number, fromZ: number, toX: number, toZ: number): number[] | null;
   /** Things to ride. */
   rides: Ride[];
   /** Things to find. Empty where there are none. */
@@ -120,6 +122,7 @@ export function cornerWorld(): World {
     heightAt,
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
+    route: () => null,
     rides: [],
     spots: [],
     charm: (pos) => people.call(pos.x, pos.z, 11),

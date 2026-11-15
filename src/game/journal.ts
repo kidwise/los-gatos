@@ -79,6 +79,9 @@ export class Journal {
   private readonly key = 'los-gatos:journal';
   private markers = new Map<string, THREE.Group>();
   private inside = new Set<string>();
+  // Rings still to find are orange; places already found show in navy on the map, to tap and return to.
+  private toFind = new THREE.MeshBasicMaterial({ color: P.persimmon });
+  private visited = new THREE.MeshBasicMaterial({ color: P.navy });
   private time = 0;
 
   // Where the camera should look instead of at the cat, while framing or during a story moment.
@@ -108,7 +111,7 @@ export class Journal {
     }
     for (const item of this.state.wearing) o.onWear(item, true);
 
-    const ink = new THREE.MeshBasicMaterial({ color: P.persimmon });
+    const ink = this.toFind;
     const ring = new THREE.RingGeometry(0.62, 0.76, 32).rotateX(-Math.PI / 2);
     const gem = new THREE.OctahedronGeometry(0.2);
     for (const f of o.finds) {
@@ -159,6 +162,11 @@ export class Journal {
     return this.moment?.id ?? null;
   }
 
+  /** Has this find been found? */
+  isFound(id: string): boolean {
+    return this.state.found.includes(id);
+  }
+
   /** How much has been found and drawn so far. */
   get summary(): { found: number; total: number; pages: number } {
     const all = this.all();
@@ -196,9 +204,10 @@ export class Journal {
       const span = this.o.rig.span;
       const near = THREE.MathUtils.smoothstep(SEE - d, 0, 14);
       const onMap = THREE.MathUtils.smoothstep(span, 40, 65) * (span / 26);
-      const shown = done || this.active ? 0 : Math.max(near, onMap);
+      const shown = this.active ? 0 : done ? onMap * 0.8 : Math.max(near, onMap);
       m.visible = shown > 0.01;
       if (m.visible) {
+        for (const part of m.children) (part as THREE.Mesh).material = done ? this.visited : this.toFind;
         m.children[0].scale.setScalar(shown * (1 + Math.sin(this.time * 2.4) * 0.07));
         m.children[1].scale.setScalar(shown);
         m.children[1].position.y = (1.35 + Math.sin(this.time * 1.7) * 0.12) * Math.max(1, shown);

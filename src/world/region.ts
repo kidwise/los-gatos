@@ -7,6 +7,7 @@ import { bridgeGhost, millGhost, type Ghost } from './ghosts';
 import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
+import { makeRouter, type Router } from './router';
 import { shopAt } from './shops';
 import type { Find, Ride, World } from './world';
 
@@ -147,6 +148,8 @@ interface Wall {
   bz: number;
   /** Only solid for walkers near this height (bridge railings); NaN means always solid. */
   y: number;
+  /** For a bridge railing, which bridge it belongs to: it only stops someone on that deck. */
+  bridge?: number;
 }
 
 export async function loadRegion(id: string, from: string | null = null): Promise<World> {
@@ -357,7 +360,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
         const len = Math.hypot(dx, dz);
         const y = (side[i + 1] + side[i + 4]) / 2;
         over.box(street ? P.stone : P.trunk, (side[i] + side[i + 3]) / 2, y + (rail - depth) / 2, (side[i + 2] + side[i + 5]) / 2, len + 0.05, rail + depth, street ? 0.4 : 0.16, Math.atan2(-dz, dx));
-        walls.push({ ax: side[i], az: side[i + 2], bx: side[i + 3], bz: side[i + 5], y });
+        walls.push({ ax: side[i], az: side[i + 2], bx: side[i + 3], bz: side[i + 5], y, bridge: bridges.length - 1 });
       }
     }
     if (street) {
@@ -681,17 +684,37 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   }
 
   /** Height of a bridge deck under a point, or null if the point is not over one. */
-  const deckY = (x: number, z: number): number | null => {
-    for (const b of bridges) {
+  /** The bridge deck over a point, if any: which bridge, its height there, and how far along it (0 to 1). */
+  const deckAt = (x: number, z: number): { bridge: number; y: number; along: number } | null => {
+    for (let n = 0; n < bridges.length; n++) {
+      const b = bridges[n];
+      const segments = b.pts.length / 3 - 1;
       for (let i = 0; i < b.pts.length - 3; i += 3) {
         const ax = b.pts[i], az = b.pts[i + 2], dx = b.pts[i + 3] - ax, dz = b.pts[i + 5] - az;
         const len2 = dx * dx + dz * dz;
         const t = len2 === 0 ? 0 : ((x - ax) * dx + (z - az) * dz) / len2;
         if (t < 0 || t > 1) continue;
-        if (Math.hypot(x - (ax + dx * t), z - (az + dz * t)) <= b.half) return b.pts[i + 1] + (b.pts[i + 4] - b.pts[i + 1]) * t;
+        if (Math.hypot(x - (ax + dx * t), z - (az + dz * t)) <= b.half) return { bridge: n, y: b.pts[i + 1] + (b.pts[i + 4] - b.pts[i + 1]) * t, along: (i / 3 + t) / segments };
       }
     }
     return null;
+  };
+  const deckY = (x: number, z: number): number | null => deckAt(x, z)?.y ?? null;
+
+  // Whether the cat is on a bridge or under it. Height alone cannot tell where the ground is only
+  // a little lower than the deck, so this is decided once, on stepping into a bridge's outline:
+  // you get onto a bridge at one of its ends, and anywhere else you are passing underneath.
+  let level: { bridge: number; onDeck: boolean } | null = null;
+  const sensedAt = new THREE.Vector2(Infinity, Infinity);
+  const sense = (pos: THREE.Vector3) => {
+    const d = deckAt(pos.x, pos.z);
+    sensedAt.set(pos.x, pos.z);
+    if (!d) level = null;
+    else if (!level || level.bridge !== d.bridge) {
+      const gap = d.y - terrainY(pos.x, pos.z);
+      // Where the drop is deep, height does tell: this also covers starting out in the middle of a deck.
+      level = { bridge: d.bridge, onDeck: d.along < 0.1 || d.along > 0.9 || (gap > 2 && pos.y > d.y - 1) };
+    }
   };
 
   // Start on Main Street, a few steps before the bridge over the freeway.
@@ -744,6 +767,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   for (const m of moving) group.add(m.object);
   const rides: Ride[] = [...(kit.rides ?? []), ...(train ? [train.ride] : [])];
   let clock = 0;
+  let router: Router | null = null;
 
   return {
     group,
@@ -754,12 +778,17 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     start,
     maxSpan: Math.max(420, (B.z1 - B.z0) * 0.6),
     resolve(pos, radius) {
+      sense(pos);
       const ix = Math.floor(pos.x / GRID), iz = Math.floor(pos.z / GRID);
       for (let pass = 0; pass < 2; pass++) {
         for (let cx = ix - 1; cx <= ix + 1; cx++) {
           for (let cz = iz - 1; cz <= iz + 1; cz++) {
             for (const w of cells.get(key(cx, cz)) ?? []) {
-              if (!Number.isNaN(w.y) && Math.abs(pos.y - w.y) > 1.2) continue;
+              // A bridge railing only stops someone who is on that bridge. Other height-limited
+              // walls, such as parked cars, stop anyone at their level.
+              if (w.bridge !== undefined) {
+                if (!(level?.onDeck && level.bridge === w.bridge)) continue;
+              } else if (!Number.isNaN(w.y) && Math.abs(pos.y - w.y) > 1.2) continue;
               const dx = w.bx - w.ax, dz = w.bz - w.az;
               const len2 = dx * dx + dz * dz;
               const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pos.x - w.ax) * dx + (pos.z - w.az) * dz) / len2));
@@ -787,10 +816,12 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     },
     heightAt(x, z, currentY) {
       const groundY = terrainY(x, z);
-      const deck = deckY(x, z);
-      // On a bridge you stay on the deck; underneath it you stay on the ground.
-      if (deck !== null && deck <= currentY + 0.8) return Math.max(deck, groundY);
-      return groundY;
+      const d = deckAt(x, z);
+      if (!d) return groundY;
+      // For the cat itself, use what was decided as it stepped into the bridge's outline.
+      if (level && level.bridge === d.bridge && Math.abs(sensedAt.x - x) < 1.5 && Math.abs(sensedAt.y - z) < 1.5) return level.onDeck ? Math.max(d.y, groundY) : groundY;
+      // Otherwise: on a bridge you stay on the deck; underneath it you stay on the ground.
+      return d.y <= currentY + 0.8 ? Math.max(d.y, groundY) : groundY;
     },
     update(dt, cat, catSpeed) {
       people.update(dt, cat, catSpeed);
@@ -799,6 +830,11 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       for (const m of moving) m.update(dt, clock);
     },
     rides,
+    route(fromX, fromZ, toX, toZ) {
+      // The network is only worked out the first time a route is asked for.
+      router ??= makeRouter(pack.roads);
+      return router(fromX, fromZ, toX, toZ);
+    },
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     ambience(pos) {
@@ -831,6 +867,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     },
     ghosts,
     covered(pos) {
+      if (level && !level.onDeck) return true;
       // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.
       for (const b of bridges) {
         for (let i = 0; i < b.pts.length - 3; i += 3) {
