@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { gouache, gouacheUniforms } from '../style/gouache';
 import { P } from '../style/palette';
 import { GROUND_FLOOR, RECESS, UPPER_FLOOR, storefronts, type Kit } from './buildings';
-import { HEROES } from './heroes';
+import type { Spot } from './corner';
+import { HEROES, fitRectangle } from './heroes';
+import { People } from './people';
 import { Batch, signOptions } from './kit';
 import { shopAt } from './shops';
 import type { World } from './world';
@@ -34,6 +36,9 @@ const STREETS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unc
 const SIDEWALK = 2.6;
 const WALLS = [P.cream, P.warmWhite, P.blush, P.sage, P.butter, P.paleTerracotta, P.slateBlue, P.cream, P.warmWhite];
 const HOUSES = new Set(['house', 'detached', 'residential', 'garage', 'shed', 'apartments']);
+const PITCHED_ROOFS = [P.terracotta, 0xb8664a, 0xa8785a, 0x9a8f96];
+const FLAT_ROOFS = [P.roof, 0xd3c8bb, 0xcfc6c0, 0xe0d6c8];
+const WALKABLE = new Set(['cycleway', 'footway', 'path', 'pedestrian']);
 const AREA_COLOR: Record<string, number> = { park: P.lawn, grass: P.lawn, wood: P.lawnDeep, parking: P.lot, plaza: P.plaza, pool: P.water };
 
 function hash(n: number): number {
@@ -41,6 +46,16 @@ function hash(n: number): number {
   t = Math.imul(t ^ (t >>> 16), 0x85ebca6b);
   t = Math.imul(t ^ (t >>> 13), 0xc2b2ae35);
   return ((t ^ (t >>> 16)) >>> 0) / 4294967296;
+}
+
+const CAP = new THREE.BoxGeometry(1, 1, 1);
+
+function insideRing(x: number, z: number, ring: number[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    if (ring[i + 1] > z !== ring[j + 1] > z && x < ((ring[j] - ring[i]) * (z - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) inside = !inside;
+  }
+  return inside;
 }
 
 /** Collects triangles, turning each to face upward, and hands back a geometry with normals. */
@@ -148,6 +163,10 @@ export async function loadRegion(id: string): Promise<World> {
   const kit: Kit = { paint, glow: new Batch(), glint: new Batch(), signs: new THREE.Group() };
   signOptions.px = 56;
   const walls: Wall[] = [];
+  // Lines people walk along, and spots where they stand looking into shop windows.
+  const walkways: number[][] = [];
+  const standers: Spot[] = [];
+  const lifted = (pts: number[]) => pts.map((v, i) => (i % 3 === 1 ? v + 0.05 : v));
 
   // ---- Ground: one sheet, tinted by what covers it. ----
   {
@@ -243,6 +262,10 @@ export async function loadRegion(id: string): Promise<World> {
       disc(layer('asphalt'), r.pts[end], r.pts[end + 1] + 0.07, r.pts[end + 2], r.width / 2);
       if (r.kind !== 'residential') ribbon(layer('paint'), r.pts, 0.16, 0.1, (i) => i % 2 === 0);
       if (r.bridge) bridge(r, full);
+      if (r.sidewalks) {
+        const walk = edges(r.pts, r.width + SIDEWALK);
+        walkways.push(lifted(walk.L), lifted(walk.R));
+      }
     } else if (r.kind === 'motorway' || r.kind === 'motorway_link') {
       ribbon(layer('freeway'), r.pts, r.width, 0.06);
       if (r.kind === 'motorway') ribbon(layer('paint'), r.pts, 0.18, 0.09, (i) => i % 3 === 0);
@@ -259,6 +282,7 @@ export async function loadRegion(id: string): Promise<World> {
       const name = r.kind === 'cycleway' ? 'trail' : r.kind === 'track' ? 'earth' : r.kind === 'pedestrian' ? 'plaza' : 'sidewalk';
       ribbon(layer(name), r.pts, r.width, r.kind === 'cycleway' ? 0.085 : 0.08);
       if (r.bridge) bridge(r, r.width);
+      if (WALKABLE.has(r.kind)) walkways.push(lifted(r.pts));
     }
   }
   onBridge = false;
@@ -320,7 +344,6 @@ export async function loadRegion(id: string): Promise<World> {
     const wall = WALLS[Math.floor(hash(b.id) * WALLS.length)];
     const tone = hash(b.id + 3);
     const style = { wall, trim: P.trim, shutters: tone < 0.2 ? P.inkGreen : tone < 0.35 ? P.navy : undefined };
-    const sides = new Tris();
     const g = new THREE.BufferGeometry();
     const v: number[] = [];
     for (let i = 0; i < n; i++) {
@@ -341,6 +364,11 @@ export async function loadRegion(id: string): Promise<World> {
         const count = Math.max(1, Math.round(len / 6.5));
         const shops = Array.from({ length: count }, (_, s) => shopAt(shopCount++, hash(b.id * 31 + i * 7 + s)));
         storefronts(kit, style, shops, len, frame, b.levels, height);
+        if (hash(b.id * 17 + i) < 0.3) {
+          // Someone looking in at the window.
+          const f = 0.3 + hash(b.id * 5 + i) * 0.4;
+          standers.push({ x: ax + (bx - ax) * f - ox * 1.9, y: b.base + 0.05, z: az + (bz - az) * f - oz * 1.9, heading: Math.atan2(ox, oz) });
+        }
         continue;
       }
       v.push(ax, b.base - 0.5, az, ax, top, az, bx, top, bz, ax, b.base - 0.5, az, bx, top, bz, bx, b.base - 0.5, bz);
@@ -365,12 +393,105 @@ export async function loadRegion(id: string): Promise<World> {
     g.computeVertexNormals();
     paint.add(g, wall, 0, 0, 0);
 
-    const contour: THREE.Vector2[] = [];
-    for (let i = 0; i < n; i++) contour.push(new THREE.Vector2(b.ring[i * 2], b.ring[i * 2 + 1]));
-    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
-      sides.tri(contour[i].x, top, contour[i].y, contour[j].x, top, contour[j].y, contour[k].x, top, contour[k].y);
+    roof(b.id, b.ring, top, house, wall);
+  }
+
+  /**
+   * Roofs with real planes for the light to catch: hipped where the footprint is close to a
+   * rectangle, sloped in from every edge where it is not, and flat behind a parapet for shops.
+   */
+  function roof(id: number, ring: number[], top: number, house: boolean, wall: number): void {
+    const n = ring.length / 2;
+    const rect = fitRectangle(ring);
+    let area = 0;
+    for (let i = 0; i < n; i++) area += ring[i * 2] * ring[((i + 1) % n) * 2 + 1] - ring[((i + 1) % n) * 2] * ring[i * 2 + 1];
+    area = Math.abs(area) / 2;
+    const boxy = area / (4 * rect.halfLong * rect.halfShort) > 0.84;
+    const pitched = house || hash(id + 7) < 0.22;
+    const tone = Math.floor(hash(id + 13) * 4);
+    const out = new Tris();
+    const c = Math.cos(rect.angle), s = Math.sin(rect.angle);
+
+    if (pitched && boxy && rect.halfShort > 1.5) {
+      // Hipped roof on the fitted rectangle, with a small overhang.
+      const hx = rect.halfLong + 0.45, hz = rect.halfShort + 0.45;
+      const rise = Math.min(hz * 0.62, 3.2);
+      const ridge = Math.max(hx - hz, 0);
+      const at = (lx: number, lz: number, y: number): [number, number, number] => [rect.cx + c * lx - s * lz, y, rect.cz + s * lx + c * lz];
+      const A = at(-hx, -hz, top), B = at(hx, -hz, top), C = at(hx, hz, top), D = at(-hx, hz, top);
+      const R1 = at(-ridge, 0, top + rise), R2 = at(ridge, 0, top + rise);
+      for (const [p, q, r] of [[D, C, R2], [D, R2, R1], [B, A, R1], [B, R1, R2], [A, D, R1], [C, B, R2]]) out.tri(...p, ...q, ...r);
+      paint.add(out.geometry(), PITCHED_ROOFS[tone], 0, 0, 0);
+      // Ridge and hip caps, a shade darker, so the roof's shape is drawn as well as lit.
+      const cap = new THREE.Color(PITCHED_ROOFS[tone]).multiplyScalar(0.8).getHex();
+      for (const [p, q] of [[R1, R2], [A, R1], [D, R1], [B, R2], [C, R2]]) {
+        const dx = q[0] - p[0], dy = q[1] - p[1], dz = q[2] - p[2];
+        const flat = Math.hypot(dx, dz);
+        if (flat < 0.3) continue;
+        paint.add(CAP, cap, (p[0] + q[0]) / 2, (p[1] + q[1]) / 2 + 0.05, (p[2] + q[2]) / 2, { sx: Math.hypot(flat, dy), sy: 0.14, sz: 0.32, ry: Math.atan2(-dz, dx), rz: Math.atan2(dy, flat) });
+      }
+      return;
     }
-    if (!sides.empty) paint.add(sides.geometry(), house ? P.terracotta : hash(b.id + 7) < 0.25 ? P.terracotta : P.roof, 0, 0, 0);
+
+    const contour: THREE.Vector2[] = [];
+    for (let i = 0; i < n; i++) contour.push(new THREE.Vector2(ring[i * 2], ring[i * 2 + 1]));
+
+    if (pitched) {
+      // Slope in from every edge to a flat top: works on L-shapes and other awkward footprints.
+      const d = Math.min(1.8, rect.halfShort * 0.45);
+      const rise = d * 0.75;
+      const inner: THREE.Vector2[] = [];
+      for (let i = 0; i < n; i++) {
+        const p = contour[(i + n - 1) % n], v = contour[i], q = contour[(i + 1) % n];
+        const l1 = Math.hypot(v.x - p.x, v.y - p.y) || 1, l2 = Math.hypot(q.x - v.x, q.y - v.y) || 1;
+        // Inward is on the left of each edge.
+        const n1x = -(v.y - p.y) / l1, n1z = (v.x - p.x) / l1, n2x = -(q.y - v.y) / l2, n2z = (q.x - v.x) / l2;
+        const k = d / Math.max(0.35, 1 + n1x * n2x + n1z * n2z);
+        inner.push(new THREE.Vector2(v.x + (n1x + n2x) * k, v.y + (n1z + n2z) * k));
+      }
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        out.tri(contour[i].x, top, contour[i].y, contour[j].x, top, contour[j].y, inner[j].x, top + rise, inner[j].y);
+        out.tri(contour[i].x, top, contour[i].y, inner[j].x, top + rise, inner[j].y, inner[i].x, top + rise, inner[i].y);
+      }
+      for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(inner, [])) {
+        out.tri(inner[i].x, top + rise, inner[i].y, inner[j].x, top + rise, inner[j].y, inner[k].x, top + rise, inner[k].y);
+      }
+      paint.add(out.geometry(), PITCHED_ROOFS[tone], 0, 0, 0);
+      const rim = new THREE.Color(PITCHED_ROOFS[tone]).multiplyScalar(0.8).getHex();
+      for (let i = 0; i < n; i++) {
+        const a = inner[i], b = inner[(i + 1) % n];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len > 0.4) paint.box(rim, (a.x + b.x) / 2, top + rise + 0.05, (a.y + b.y) / 2, len, 0.14, 0.3, Math.atan2(-(b.y - a.y), b.x - a.x));
+      }
+      return;
+    }
+
+    // Flat roof sunk behind a parapet, with plant and skylights on top.
+    const deck = top - 0.5;
+    for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
+      out.tri(contour[i].x, deck, contour[i].y, contour[j].x, deck, contour[j].y, contour[k].x, deck, contour[k].y);
+    }
+    if (!out.empty) paint.add(out.geometry(), FLAT_ROOFS[tone], 0, 0, 0);
+    for (let i = 0; i < n; i++) {
+      const a = contour[i], b = contour[(i + 1) % n];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 0.8) continue;
+      const ix = (-(b.y - a.y) / len) * 0.15, iz = ((b.x - a.x) / len) * 0.15;
+      const turn = Math.atan2(-(b.y - a.y), b.x - a.x);
+      paint.box(wall, (a.x + b.x) / 2 + ix, top - 0.25, (a.y + b.y) / 2 + iz, len + 0.02, 0.5, 0.3, turn);
+      paint.box(P.trim, (a.x + b.x) / 2 + ix, top + 0.03, (a.y + b.y) / 2 + iz, len + 0.1, 0.06, 0.4, turn);
+    }
+    const units = area > 140 ? 3 : area > 55 ? 2 : area > 25 ? 1 : 0;
+    for (let u = 0; u < units; u++) {
+      const lx = (hash(id * 3 + u * 11) - 0.5) * rect.halfLong * 1.2;
+      const lz = (hash(id * 7 + u * 5) - 0.5) * rect.halfShort * 1.2;
+      const x = rect.cx + c * lx - s * lz, z = rect.cz + s * lx + c * lz;
+      if (!insideRing(x, z, ring)) continue;
+      if (u === 0) paint.box(P.roofUnit, x, deck + 0.42, z, 1.7, 0.84, 1.2, -rect.angle);
+      else if (u === 1) paint.box(P.slateBlue, x, deck + 0.13, z, 1.9, 0.26, 1.2, -rect.angle);
+      else paint.cyl(P.roofUnit, x, deck + 0.4, z, 0.2, 0.2, 0.8, 8);
+    }
   }
 
   // ---- Trees. ----
@@ -405,6 +526,10 @@ export async function loadRegion(id: string): Promise<World> {
     group.add(glint);
   }
   group.add(kit.signs);
+
+  // People on the real sidewalks and the trail, drawn only near the cat.
+  const people = new People({ seats: [], standers, walkways, walkers: 260, drawRadius: 140 });
+  group.add(people.group);
 
   // The painting fades to paper just past the region's edge.
   const B = pack.bounds;
@@ -486,7 +611,7 @@ export async function loadRegion(id: string): Promise<World> {
       if (deck !== null && deck <= currentY + 0.8) return Math.max(deck, groundY);
       return groundY;
     },
-    update() {},
+    update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered(pos) {
       // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.
       for (const b of bridges) {

@@ -53,6 +53,8 @@ const PAINT = /* glsl */ `
       float gLight = smoothstep(0.50 + gW, 0.54 + gW, gLit);
       vec3 gCol = mix(gBase * uShadowTint, gBase * uHalfTint, gHalf);
       gCol = mix(gCol, gBase * uLightTint, gLight);
+      // A fourth, brightest tone for planes turned full to the sun, so roof slopes separate.
+      gCol = mix(gCol, gBase * uLightTint * 1.09, smoothstep(0.84 + gW, 0.88 + gW, gLit));
     #endif
     // The painting runs out into bare paper at its edge.
     float gD = length(max(abs(vGWorld.xz - uFadeCenter) - uFadeHalf, 0.0)) + (gNoise(vGWorld * 0.13) - 0.5) * 9.0;

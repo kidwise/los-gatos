@@ -78,7 +78,7 @@ const LOOKS: Look[] = [
 ];
 
 const STEP_RATE = 12;
-const CAPACITY = 1000;
+const CAPACITY = 2600;
 const THIGH = 0.5;
 const SHIN = 0.5;
 const UPPER_ARM = 0.3;
@@ -102,7 +102,14 @@ interface Person {
   z: number;
   heading: number;
   // Walkers only.
-  route: Route | null;
+  /** The line being walked, as x, y, z points in walking order, and the distance along it at each point. */
+  line: number[] | null;
+  cum: number[];
+  seg: number;
+  way: number;
+  /** Set for someone walking alongside another person: they keep station on their leader. */
+  leader: Person | null;
+  lag: number;
   dist: number;
   speed: number;
   side: number;
@@ -115,31 +122,39 @@ interface Person {
   seed: number;
 }
 
-interface Route {
-  points: THREE.Vector2[];
-  lengths: number[];
-  total: number;
+/** A line people can walk along: x, y, z for each point. Lines whose ends meet are joined into a network. */
+export type Walkway = number[];
+
+export interface PeopleOptions {
+  seats: Spot[];
+  standers: Spot[];
+  walkways: Walkway[];
+  walkers: number;
+  /** Ground height, where it should override the heights stored in the walkways. */
+  heightAt?: (x: number, z: number) => number;
+  /** People further than this from the cat are not drawn. */
+  drawRadius?: number;
 }
 
-function route(coords: number[][], reverse: boolean): Route {
-  const points = coords.map(([x, z]) => new THREE.Vector2(x, z));
-  if (reverse) points.reverse();
-  const lengths = points.slice(1).map((p, i) => p.distanceTo(points[i]));
-  return { points, lengths, total: lengths.reduce((a, b) => a + b, 0) };
-}
-
-// Sidewalk lines round the blocks and over the crosswalks. Both ends lie out in the bare paper,
-// so people arrive and leave unseen.
+// The style corner's sidewalk lines, round the blocks and over the crosswalks. Their ends lie out
+// in the bare paper, so people arrive, leave and turn round unseen.
 const LANE = 6.85;
 const CROSS = 6.6;
 const FAR = 48;
-const ROUTES: number[][][] = [
+export const CORNER_WALKWAYS: Walkway[] = [
   [[-FAR, -LANE], [-LANE, -LANE], [-LANE, -FAR]],
   [[-FAR, -LANE], [-9, -LANE], [-7, -CROSS], [7, -CROSS], [9, -LANE], [FAR, -LANE]],
   [[-LANE, -FAR], [-LANE, -9], [-CROSS, -7], [-CROSS, 7], [-LANE, 9], [-LANE, FAR]],
   [[FAR, LANE], [9.5, LANE], [LANE, 9.5], [LANE, FAR]],
   [[-FAR, LANE], [-9, LANE], [-7, CROSS], [7, CROSS], [9.5, LANE], [FAR, LANE]],
-];
+].map((line) => line.flatMap(([x, z]) => [x, 0, z]));
+
+/** Distance along a line at each of its points, measured on the ground. */
+function measure(pts: number[]): number[] {
+  const cum = [0];
+  for (let i = 3; i < pts.length; i += 3) cum.push(cum[cum.length - 1] + Math.hypot(pts[i] - pts[i - 3], pts[i + 2] - pts[i - 1]));
+  return cum;
+}
 
 const _base = new THREE.Matrix4();
 const _upper = new THREE.Matrix4();
@@ -207,10 +222,20 @@ export class People {
   private folk: Person[] = [];
   private stepClock = 0;
   private time = 0;
+  private ways: { pts: number[]; cum: number[] }[];
+  private rand = seeded(1923);
+  private heightAt?: (x: number, z: number) => number;
+  private drawRadius: number;
+  private catX = 0;
+  private catZ = 0;
 
-  constructor(seats: Spot[], standers: Spot[]) {
+  constructor(opts: PeopleOptions) {
+    const { seats, standers } = opts;
     for (const s of this.shapes) this.group.add(s.mesh);
-    const rand = seeded(1923);
+    this.ways = opts.walkways.filter((w) => w.length >= 6).map((pts) => ({ pts, cum: measure(pts) }));
+    this.heightAt = opts.heightAt;
+    this.drawRadius = opts.drawRadius ?? Infinity;
+    const rand = this.rand;
     const pick = <T>(list: readonly T[]) => list[Math.floor(rand() * list.length)];
 
     // Deal outfits from a shuffled deck so neighbours rarely match.
@@ -234,41 +259,52 @@ export class People {
         pocket: rand() < 0.3,
         dog: null,
         x: 0, y: 0.15, z: 0, heading: 0,
-        route: null, dist: 0, speed: 0, side: 0,
+        line: null, cum: [], seg: 0, way: -1, leader: null, lag: 0, dist: 0, speed: 0, side: 0,
         phase: rand(), shownPhase: 0,
         greet: 0, greetTime: 0, cooldown: 0,
         seed: rand() * 100,
       };
     };
 
-    // Walkers, in both directions along every route.
-    ROUTES.forEach((coords, r) => {
-      for (const reverse of [false, true]) {
-        const rt = route(coords, reverse);
-        const count = r < 3 ? 3 : 2;
-        for (let i = 0; i < count; i++) {
-          const p = make('walk');
-          p.route = rt;
-          p.dist = ((i + rand() * 0.7) / count) * rt.total;
-          p.speed = 1.05 + rand() * 0.4;
-          p.side = 0.3 + (rand() - 0.5) * 0.2;
-          const hands = p.look.bag?.kind;
-          if (rand() < 0.3 && (hands === undefined || hands === 'tote' || hands === 'crossbody')) p.dog = pick(DOG);
-          this.folk.push(p);
-        }
+    // Walkers are spread along the walkways in proportion to their length.
+    const lengths = this.ways.map((w) => w.cum[w.cum.length - 1]);
+    const total = lengths.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < opts.walkers && total > 0; i++) {
+      let at = rand() * total;
+      let w = 0;
+      while (w < lengths.length - 1 && at > lengths[w]) at -= lengths[w++];
+      const p = make('walk');
+      this.follow(p, w, rand() < 0.5);
+      p.dist = Math.min(at, lengths[w] * 0.98);
+      p.speed = 1.05 + rand() * 0.4;
+      p.side = 0.3 + (rand() - 0.5) * 0.2;
+      const hands = p.look.bag?.kind;
+      if (rand() < 0.3 && (hands === undefined || hands === 'tote' || hands === 'crossbody')) p.dog = pick(DOG);
+      this.folk.push(p);
+
+      // Some people are out together: one or two friends walk abreast of the first.
+      const r = rand();
+      const friends = r < 0.09 ? 2 : r < 0.36 ? 1 : 0;
+      for (let f = 0; f < friends && i + 1 < opts.walkers; f++, i++) {
+        const friend = make('walk');
+        friend.leader = p;
+        friend.side = p.side + (f === 0 ? 0.72 : -0.72);
+        friend.lag = 0.1 + rand() * 0.35;
+        friend.line = p.line;
+        this.folk.push(friend);
       }
-    });
+    }
 
     for (const spot of standers) {
       const p = make('stand');
-      Object.assign(p, { x: spot.x, z: spot.z, heading: spot.heading });
+      Object.assign(p, { x: spot.x, y: spot.y ?? 0.15, z: spot.z, heading: spot.heading });
       this.folk.push(p);
     }
     // Leave a few chairs empty.
     seats.forEach((spot, i) => {
       if (i % 3 === 2) return;
       const p = make('sit');
-      Object.assign(p, { x: spot.x, z: spot.z, heading: spot.heading });
+      Object.assign(p, { x: spot.x, y: spot.y ?? 0.15, z: spot.z, heading: spot.heading });
       this.folk.push(p);
     });
 
@@ -276,23 +312,74 @@ export class People {
   }
 
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void {
+    this.catX = cat.x;
+    this.catZ = cat.z;
     this.time += dt;
     this.stepClock += dt;
     const tick = this.stepClock >= 1 / STEP_RATE;
     if (tick) this.stepClock = 0;
 
     for (const p of this.folk) {
-      if (p.mode === 'walk' && p.route) this.walk(p, dt, cat, catSpeed);
+      if (p.mode === 'walk' && p.line) this.walk(p, dt, cat, catSpeed);
       if (tick) p.shownPhase = p.phase;
     }
     this.draw();
   }
 
+  /** Sets a walker off along a walkway, from one end or the other, optionally starting from where they stand. */
+  private follow(p: Person, way: number, reversed: boolean, from?: number[]): void {
+    const src = this.ways[way].pts;
+    const line: number[] = from ? from.slice() : [];
+    for (let i = 0; i < src.length; i += 3) {
+      const k = reversed ? src.length - 3 - i : i;
+      line.push(src[k], src[k + 1], src[k + 2]);
+    }
+    p.line = line;
+    p.cum = measure(line);
+    p.way = way;
+    p.seg = 0;
+    p.dist = 0;
+  }
+
+  /** At the end of a walkway, carry on along one that starts nearby, or turn back if there is none. */
+  private turn(p: Person): void {
+    const line = p.line!;
+    const end = [line[line.length - 3], line[line.length - 2], line[line.length - 1]];
+    const options: { way: number; reversed: boolean; weight: number }[] = [];
+    let sum = 0;
+    this.ways.forEach((w, i) => {
+      if (i === p.way) return;
+      for (const reversed of [false, true]) {
+        const k = reversed ? w.pts.length - 3 : 0;
+        const d = Math.hypot(w.pts[k] - end[0], w.pts[k + 2] - end[2]);
+        // Usually round the corner or straight on; now and then, across the street.
+        const weight = d < 9 ? 1 : d < 17 ? 0.2 : 0;
+        if (weight > 0 && Math.abs(w.pts[k + 1] - end[1]) < 1.5) {
+          options.push({ way: i, reversed, weight });
+          sum += weight;
+        }
+      }
+    });
+    if (options.length === 0) {
+      // Dead end: go back the way we came.
+      const src = this.ways[p.way].pts;
+      const atStart = Math.hypot(src[0] - end[0], src[2] - end[2]) < Math.hypot(src[src.length - 3] - end[0], src[src.length - 1] - end[2]);
+      this.follow(p, p.way, !atStart);
+      return;
+    }
+    let r = this.rand() * sum;
+    let choice = options[0];
+    for (const o of options) {
+      choice = o;
+      if ((r -= o.weight) <= 0) break;
+    }
+    this.follow(p, choice.way, choice.reversed, end);
+  }
+
   private walk(p: Person, dt: number, cat: THREE.Vector3, catSpeed: number): void {
-    const rt = p.route!;
     // A cat that has stopped nearby is worth stopping for.
     p.cooldown = Math.max(0, p.cooldown - dt);
-    const near = Math.hypot(cat.x - p.x, cat.z - p.z) < 1.5;
+    const near = Math.hypot(cat.x - p.x, cat.z - p.z) < 1.5 && Math.abs(cat.y - p.y) < 1.5;
     const greeting = near && catSpeed < 0.3 && p.cooldown === 0 && p.greetTime < 5;
     if (greeting) p.greetTime += dt;
     else if (p.greetTime > 0) {
@@ -301,38 +388,49 @@ export class People {
     }
     p.greet += ((greeting ? 1 : 0) - p.greet) * (1 - Math.exp(-6 * dt));
 
-    const pace = p.speed * (1 - p.greet);
-    p.dist += pace * dt;
-    if (p.dist >= rt.total) p.dist -= rt.total;
+    let pace = p.speed * (1 - p.greet);
+    const lead = p.leader;
+    if (lead) {
+      // Keep station beside the leader, and stop when they stop.
+      p.line = lead.line;
+      p.cum = lead.cum;
+      p.seg = 0;
+      p.dist = Math.max(0, lead.dist - p.lag);
+      p.greet = lead.greet;
+      pace = lead.speed * (1 - lead.greet);
+    } else {
+      p.dist += pace * dt;
+      if (p.dist >= p.cum[p.cum.length - 1]) this.turn(p);
+    }
     p.phase = (p.phase + (pace * dt) / (1.5 * p.scale)) % 1;
 
-    // Find the stretch of route we are on, and keep to the right of its centre line.
-    let d = p.dist;
-    let i = 0;
-    while (i < rt.lengths.length - 1 && d > rt.lengths[i]) d -= rt.lengths[i++];
-    const a = rt.points[i];
-    const b = rt.points[i + 1];
-    const t = d / rt.lengths[i];
-    const dx = (b.x - a.x) / rt.lengths[i];
-    const dz = (b.y - a.y) / rt.lengths[i];
-    const tx = a.x + (b.x - a.x) * t - dz * p.side;
-    const tz = a.y + (b.y - a.y) * t + dx * p.side;
+    // Find the stretch of line we are on, and keep to the right of it.
+    const line = p.line!;
+    while (p.seg < p.cum.length - 2 && p.dist > p.cum[p.seg + 1]) p.seg++;
+    const a = p.seg * 3;
+    const span = p.cum[p.seg + 1] - p.cum[p.seg] || 1;
+    const t = Math.min(1, (p.dist - p.cum[p.seg]) / span);
+    const dx = (line[a + 3] - line[a]) / span;
+    const dz = (line[a + 5] - line[a + 2]) / span;
+    const tx = line[a] + (line[a + 3] - line[a]) * t - dz * p.side;
+    const tz = line[a + 2] + (line[a + 5] - line[a + 2]) * t + dx * p.side;
+    const ty = this.heightAt ? this.heightAt(tx, tz) : line[a + 1] + (line[a + 4] - line[a + 1]) * t;
     const ease = 1 - Math.exp(-8 * dt);
     const jumped = Math.hypot(tx - p.x, tz - p.z) > 5;
     p.x = jumped ? tx : p.x + (tx - p.x) * ease;
     p.z = jumped ? tz : p.z + (tz - p.z) * ease;
+    p.y = jumped ? ty : p.y + (ty - p.y) * 0.3;
 
     const goal = p.greet > 0.5 ? Math.atan2(cat.x - p.x, cat.z - p.z) : Math.atan2(dx, dz);
     const diff = Math.atan2(Math.sin(goal - p.heading), Math.cos(goal - p.heading));
     p.heading = jumped ? goal : p.heading + diff * (1 - Math.exp(-7 * dt));
-
-    const onStreet = Math.abs(p.x) < 4.5 || Math.abs(p.z) < 4.5;
-    p.y += ((onStreet ? 0 : 0.15) - p.y) * 0.3;
   }
 
   private draw(): void {
     for (const s of this.shapes) s.begin();
-    for (const p of this.folk) this.figure(p);
+    for (const p of this.folk) {
+      if (Math.hypot(p.x - this.catX, p.z - this.catZ) <= this.drawRadius) this.figure(p);
+    }
     for (const s of this.shapes) s.end();
   }
 

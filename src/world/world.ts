@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { gouacheUniforms } from '../style/gouache';
 import { buildCorner, type Collider } from './corner';
-import { People } from './people';
+import { CORNER_WALKWAYS, People } from './people';
 
 /** A place the cat can walk around: the style-study corner, or a region built from the real map. */
 export interface World {
@@ -20,7 +20,9 @@ export interface World {
 
 export function cornerWorld(): World {
   const corner = buildCorner();
-  const people = new People(corner.seats, corner.standers);
+  // Sidewalks and the plaza sit a curb's height above the street.
+  const heightAt = (x: number, z: number) => (Math.abs(x) < 4.5 || Math.abs(z) < 4.5 ? 0 : 0.15);
+  const people = new People({ seats: corner.seats, standers: corner.standers, walkways: CORNER_WALKWAYS, walkers: 26, heightAt });
   const group = new THREE.Group();
   group.add(corner.group, people.group);
   const colliders: Collider[] = corner.colliders.slice();
@@ -64,8 +66,7 @@ export function cornerWorld(): World {
         pos.z *= corner.radius / d;
       }
     },
-    // Sidewalks and the plaza sit a curb's height above the street.
-    heightAt: (x, z) => (Math.abs(x) < 4.5 || Math.abs(z) < 4.5 ? 0 : 0.15),
+    heightAt,
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
   };

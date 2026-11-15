@@ -22,6 +22,8 @@ export interface Corner {
 /** A place for a person, with the direction they face. */
 export interface Spot {
   x: number;
+  /** Ground height; left out on the flat style corner. */
+  y?: number;
   z: number;
   heading: number;
 }

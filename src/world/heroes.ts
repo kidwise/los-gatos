@@ -12,7 +12,7 @@ export type HeroBuilder = (k: Kit, ring: number[], base: number) => void;
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 
 /** The tightest rectangle round a footprint: its centre, half-sizes (long side first) and turn. */
-function fitRectangle(ring: number[]): { cx: number; cz: number; halfLong: number; halfShort: number; angle: number } {
+export function fitRectangle(ring: number[]): { cx: number; cz: number; halfLong: number; halfShort: number; angle: number } {
   let best = { cx: 0, cz: 0, halfLong: 0, halfShort: 0, angle: 0 };
   let bestArea = Infinity;
   const n = ring.length / 2;
