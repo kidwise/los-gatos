@@ -16,6 +16,18 @@ export interface World {
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
   /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
   covered(pos: THREE.Vector3): boolean;
+  /** Places to sketch. Empty where there is nothing to discover. */
+  spots: SketchSpot[];
+}
+
+export interface SketchSpot {
+  id: string;
+  title: string;
+  blurb: string;
+  x: number;
+  z: number;
+  /** How far the colour spreads once this spot is sketched. */
+  radius: number;
 }
 
 export function cornerWorld(): World {
@@ -69,5 +81,6 @@ export function cornerWorld(): World {
     heightAt,
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
+    spots: [],
   };
 }

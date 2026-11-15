@@ -56,14 +56,15 @@ export class Cat {
   debugPhase = 0;
 
   constructor() {
-    const body = gouache({ color: P.catBody, local: true });
-    const white = gouache({ color: P.catWhite, local: true });
-    const collar = gouache({ color: P.persimmon, local: true });
-    const brass = gouache({ color: P.brass, local: true });
-    const iris = gouache({ color: P.catEye, local: true, unlit: true });
-    const pupil = gouache({ color: P.ink, local: true, unlit: true });
-    const glint = gouache({ color: P.trim, local: true, unlit: true });
-    const nose = gouache({ color: P.catNose, local: true });
+    // The cat is always in full colour: it is what brings colour to the town.
+    const body = gouache({ color: P.catBody, local: true, painted: true });
+    const white = gouache({ color: P.catWhite, local: true, painted: true });
+    const collar = gouache({ color: P.persimmon, local: true, painted: true });
+    const brass = gouache({ color: P.brass, local: true, painted: true });
+    const iris = gouache({ color: P.catEye, local: true, unlit: true, painted: true });
+    const pupil = gouache({ color: P.ink, local: true, unlit: true, painted: true });
+    const glint = gouache({ color: P.trim, local: true, unlit: true, painted: true });
+    const nose = gouache({ color: P.catNose, local: true, painted: true });
 
     const rig = new THREE.Group();
     rig.scale.setScalar(CAT_SCALE);
@@ -147,6 +148,11 @@ export class Cat {
     makeLeg(true, 1, 0.75, 0.0);
 
     this.pose();
+  }
+
+  /** Sit down straight away, without the usual wait. */
+  sitNow(): void {
+    this.idleTime = 10;
   }
 
   /** speed is ground speed in metres per second. */

@@ -5,7 +5,7 @@
 // OpenStreetMap has no ground heights, so the terrain here is inferred: the freeway and the creek
 // are carved below town level, streets are kept level, and trails get a flat bench to run on.
 // Real elevation data can replace the inferred terrain later without changing the pack format.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { REGIONS } from './regions.mjs';
 
 const id = process.argv[2];
@@ -483,6 +483,108 @@ for (const el of raw.elements) {
   }
 }
 
+// ---------- Sketch spots, from the hand-authored overlay ----------
+const spots = [];
+const overlayPath = `data/overlays/${id}.json`;
+if (existsSync(overlayPath)) {
+  const overlay = JSON.parse(readFileSync(overlayPath, 'utf8'));
+  const longest = (list) => list.slice().sort((a, b) => measure(b.pts).total - measure(a.pts).total)[0];
+  const alongLine = (pts, f) => {
+    const { cum, total } = measure(pts);
+    const target = total * f;
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1] < target) i++;
+    const t = cum[i + 1] > cum[i] ? (target - cum[i]) / (cum[i + 1] - cum[i]) : 0;
+    return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t];
+  };
+  for (const s of overlay.spots ?? []) {
+    let at = null;
+    if (s.near) {
+      const el = raw.elements.find((e) => e.tags?.name === s.near);
+      if (el?.type === 'node') at = nodes.get(el.id);
+      else if (el?.type === 'way') {
+        const pts = pointsOf(el);
+        at = [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+        // Stand outside a building, not in the middle of it: step out to the nearest street or path.
+        if (el.tags.building) {
+          let best = null, bestD = Infinity;
+          for (const l of lines) {
+            if (l.kind === 'motorway' || l.kind === 'motorway_link' || l.kind === 'service') continue;
+            for (const p of l.pts) {
+              const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+              if (d < bestD) [best, bestD] = [p, d];
+            }
+          }
+          if (best && bestD < 60) at = best;
+        }
+      }
+    } else if (s.bridge) {
+      const l = lines.find((r) => r.bridge && r.name === s.bridge);
+      if (l) at = alongLine(l.pts, 0.5);
+    } else if (s.trailBridge) {
+      const l = longest(lines.filter((r) => r.bridge && r.kind === 'cycleway'));
+      if (l) at = alongLine(l.pts, 0.5);
+    } else if (s.creek !== undefined) {
+      const l = longest(streams.filter((r) => !r.tunnel));
+      if (l) {
+        // Beside the water, on the nearest path, not in it.
+        const mid = alongLine(l.pts, s.creek);
+        let best = mid, bestD = Infinity;
+        for (const t of lines.filter((r) => TRAIL.has(r.kind) && !r.bridge)) {
+          for (const p of t.pts) {
+            const d = Math.hypot(p[0] - mid[0], p[1] - mid[1]);
+            if (d < bestD) [best, bestD] = [p, d];
+          }
+        }
+        at = best;
+      }
+    } else if (s.trail !== undefined) {
+      const l = longest(lines.filter((r) => r.kind === 'cycleway' && !r.bridge));
+      if (l) at = alongLine(l.pts, s.trail);
+    }
+    if (!at || !inBounds(at[0], at[1], -8)) {
+      console.warn(`  spot "${s.id}": could not be placed`);
+      continue;
+    }
+    // A spot must be somewhere the cat can stand. If it landed in or against a building, move it
+    // to the nearest point on a street or path that is clear of every building.
+    const ringHit = (x, z, ring) => {
+      let hit = false;
+      for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+        if (ring[i + 1] > z !== ring[j + 1] > z && x < ((ring[j] - ring[i]) * (z - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) hit = !hit;
+      }
+      return hit;
+    };
+    const blocked = (x, z) =>
+      buildings.some((b) => {
+        if (Math.hypot(b.cx - x, b.cz - z) > 80) return false;
+        if (ringHit(x, z, b.ring)) return true;
+        for (let i = 0; i < b.ring.length; i += 2) {
+          const j = (i + 2) % b.ring.length;
+          if (distToSegment(x, z, b.ring[i], b.ring[i + 1], b.ring[j], b.ring[j + 1]).d < 2) return true;
+        }
+        return false;
+      });
+    if (blocked(at[0], at[1])) {
+      let best = null, bestD = Infinity;
+      for (const l of lines) {
+        if (l.kind === 'motorway' || l.kind === 'motorway_link' || l.bridge) continue;
+        for (const p of resample(l.pts, 2)) {
+          const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+          if (d < bestD && !blocked(p[0], p[1])) [best, bestD] = [p, d];
+        }
+      }
+      if (!best) {
+        console.warn(`  spot "${s.id}": no clear ground nearby`);
+        continue;
+      }
+      console.log(`  spot "${s.id}" was inside a building; moved ${bestD.toFixed(0)} m to clear ground`);
+      at = best;
+    }
+    spots.push({ id: s.id, title: s.title, blurb: s.blurb, radius: s.radius, x: r2(at[0]), z: r2(at[1]) });
+  }
+}
+
 // ---------- Write ----------
 const pack = {
   id,
@@ -500,6 +602,7 @@ const pack = {
   areas,
   trees,
   pois,
+  spots,
 };
 
 mkdirSync('public/regions', { recursive: true });
@@ -515,5 +618,6 @@ console.log(`  ${buildings.length} buildings, ${roads.length} road pieces, ${wat
 console.log('  roads:', tally);
 console.log('  bridges:', roads.filter((r) => r.bridge).map((r) => `${r.kind} ${r.name ?? ''} y=${r.pts[1]}..${r.pts[r.pts.length - 2]}`));
 console.log(`  ${buildings.filter((b) => b.fronts.length).length} buildings with shopfronts, ${buildings.reduce((a, b) => a + b.fronts.length, 0)} shopfront walls`);
+console.log('  sketch spots:', spots.map((s) => `${s.id} (${Math.round(s.x)}, ${Math.round(s.z)})`).join(', '));
 console.log('  landmarks:', pois.map((p) => p.name).join(', '));
 console.log(`  lowest ground ${Math.min(...height).toFixed(1)} m`);

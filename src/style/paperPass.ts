@@ -37,13 +37,20 @@ const PaperShader = {
       wob += (vec2(noise(css / 9.0 + 5.1), noise(css / 9.0 + 77.3)) - 0.5) * 0.45;
       vec2 uv = vUv + wob * px * 2.6;
 
-      vec3 c = texture2D(tDiffuse, uv).rgb;
+      vec4 texel = texture2D(tDiffuse, uv);
+      vec3 c = texel.rgb;
+      // 1 where the world is painted, 0 where it is still a pencil drawing.
+      float painted = clamp(texel.a, 0.0, 1.0);
 
       // Pigment pools a little darker where two colours meet.
       vec3 cx = texture2D(tDiffuse, uv + vec2(px.x * 1.2, 0.0)).rgb;
       vec3 cy = texture2D(tDiffuse, uv + vec2(0.0, px.y * 1.2)).rgb;
-      float edge = smoothstep(0.05, 0.32, length(c - cx) + length(c - cy));
-      c *= 1.0 - edge * 0.16;
+      float diff = length(c - cx) + length(c - cy);
+      float edge = smoothstep(0.05, 0.32, diff);
+      c *= 1.0 - edge * 0.16 * painted;
+      // In pencil, every change of tone is a drawn graphite line.
+      float line = smoothstep(0.012, 0.06, diff) * (1.0 - painted);
+      c = mix(c, vec3(0.37, 0.36, 0.41), line * (0.55 + 0.3 * noise(css / 3.0)));
 
       // Paper tooth and fibres.
       float grain = noise(css / 1.3);

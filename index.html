@@ -18,6 +18,55 @@
       #title em { display: block; font-size: 22px; letter-spacing: 0.01em; text-transform: none; margin-top: 2px; }
       #hint { bottom: max(22px, env(safe-area-inset-bottom)); font-style: italic; font-size: 16px; opacity: 0.7; transition: opacity 1.2s; }
       #hint.gone { opacity: 0; }
+      button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      #sketch-cta, #book-btn, #finder button, #book-close {
+        font-family: "Playfair Display", Georgia, serif; color: #3a3542; background: #fbf6ea;
+        border: 1.5px solid #3a3542; border-radius: 999px; padding: 10px 20px; font-size: 16px;
+        box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
+      }
+      #sketch-cta {
+        position: fixed; left: 50%; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); transform: translate(-50%, 16px);
+        background: #e0683f; color: #fbf6ea; border-color: #b9502c; font-style: italic; font-size: 18px; padding: 12px 26px;
+        opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s; white-space: nowrap;
+      }
+      #sketch-cta.on { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+      #book-btn { position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px; font-size: 14px; padding: 8px 16px; display: none; }
+      body.sketching #book-btn { display: block; }
+
+      /* Viewfinder: the page is masked with paper except for a 4:3 window. */
+      #finder { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.35s; }
+      #finder.on { opacity: 1; }
+      #finder-window {
+        position: absolute; left: 50%; top: 46%; width: min(88vw, 104vh); aspect-ratio: 4 / 3; transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 200vmax rgba(243, 236, 223, 0.82); outline: 2px solid #3a3542; outline-offset: 6px;
+      }
+      #finder.flash #finder-window { background: #fbf6ea; transition: background 0.1s; }
+      #finder-bar { position: absolute; left: 0; right: 0; bottom: max(18px, env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+      #finder-title { flex-basis: 100%; text-align: center; font-family: "Playfair Display", Georgia, serif; font-style: italic; color: #3a3542; font-size: 15px; }
+      #finder.on button { pointer-events: auto; }
+      #finder-draw { background: #e0683f !important; color: #fbf6ea !important; border-color: #b9502c !important; }
+
+      #toast {
+        position: fixed; left: 50%; top: max(64px, calc(env(safe-area-inset-top) + 52px)); transform: translate(-50%, -12px); max-width: min(86vw, 460px);
+        font-family: "Playfair Display", Georgia, serif; color: #3a3542; background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 14px;
+        padding: 12px 18px; font-size: 16px; text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.5s, transform 0.5s;
+      }
+      #toast.on { opacity: 1; transform: translate(-50%, 0); }
+      #toast span { display: block; font-style: italic; font-size: 14px; margin-top: 4px; opacity: 0.85; }
+
+      #book { position: fixed; inset: 0; background: #f3ecdf; overflow-y: auto; display: none; font-family: "Playfair Display", Georgia, serif; color: #3a3542; padding: 20px 16px 40px; box-sizing: border-box; }
+      #book.on { display: block; }
+      #book-head { max-width: 980px; margin: 0 auto 18px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+      #book-head em { font-size: 30px; }
+      #book-head span { flex: 1; font-size: 14px; letter-spacing: 0.08em; opacity: 0.75; }
+      #book-pages { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+      #book figure { margin: 0; background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 6px; padding: 10px 10px 12px; transform: rotate(-0.4deg); }
+      #book figure:nth-child(even) { transform: rotate(0.5deg); }
+      #book figure img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+      #book figure.blank { border-style: dashed; opacity: 0.6; min-height: 150px; display: flex; align-items: center; justify-content: center; text-align: center; }
+      #book figcaption b { display: block; font-size: 18px; margin-top: 8px; }
+      #book figcaption span { display: block; font-style: italic; font-size: 14px; margin-top: 3px; }
+      #book figcaption i { display: block; font-size: 11px; letter-spacing: 0.1em; opacity: 0.6; margin-top: 6px; }
       #credit { bottom: max(6px, env(safe-area-inset-bottom)); right: 10px; left: auto; text-align: right; font-size: 10px; opacity: 0.55; }
     </style>
   </head>

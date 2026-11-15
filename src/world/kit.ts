@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { gouache } from '../style/gouache';
 
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 const UNIT_SPHERE = new THREE.SphereGeometry(1, 16, 12);
@@ -154,8 +155,10 @@ export function makeSign(text: string, style: SignStyle, ink: number, maxWidth: 
   const h = Math.min(height, maxWidth / aspect);
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(h * aspect, h),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }),
+    // Painted like everything else, so lettering is pencil too until its street is coloured in.
+    gouache({ map: tex, transparent: true, unlit: true }),
   );
+  mesh.material.depthWrite = false;
   mesh.renderOrder = 2;
   return mesh;
 }

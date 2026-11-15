@@ -17,6 +17,9 @@ export class Controls {
   onFirstInput: (() => void) | null = null;
   /** Height of the ground the walker is on, so taps land at that level instead of at sea level. */
   groundY: () => number = () => 0;
+  /** While framing a sketch, one finger drags the view instead of leading the cat. */
+  framing = false;
+  onPan: ((dx: number, dy: number) => void) | null = null;
 
   private pointers = new Map<number, { x: number; y: number }>();
   private down = { x: 0, y: 0, t: 0 };
@@ -92,7 +95,7 @@ export class Controls {
     if (this.pointers.size === 1) {
       this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
       this.last = { x: e.clientX, y: e.clientY };
-      this.holding = true;
+      this.holding = !this.framing;
     } else {
       // A second finger means zoom, not walk.
       this.holding = false;
@@ -107,6 +110,7 @@ export class Controls {
     p.x = e.clientX;
     p.y = e.clientY;
     if (this.pointers.size === 1) {
+      if (this.framing) this.onPan?.(e.clientX - this.last.x, e.clientY - this.last.y);
       this.last = { x: e.clientX, y: e.clientY };
     } else if (this.pointers.size === 2) {
       const d = this.spread();

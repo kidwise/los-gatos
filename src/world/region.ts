@@ -7,7 +7,7 @@ import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
 import { shopAt } from './shops';
-import type { World } from './world';
+import type { SketchSpot, World } from './world';
 
 /** A region pack, as written by pipeline/build.mjs. Coordinates are game metres: x east, z south, y up. */
 interface Pack {
@@ -20,6 +20,7 @@ interface Pack {
   buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
+  spots?: SketchSpot[];
 }
 
 interface Road {
@@ -612,6 +613,7 @@ export async function loadRegion(id: string): Promise<World> {
       return groundY;
     },
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
+    spots: pack.spots ?? [],
     covered(pos) {
       // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.
       for (const b of bridges) {

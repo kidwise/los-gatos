@@ -1,0 +1,17 @@
+{
+  "note": "Hand-authored content laid over the map. Each sketch spot is placed by naming a map feature (near), a street bridge (bridge), the longest trail footbridge (trailBridge), or a fraction along the longest open creek or trail piece (creek, trail).",
+  "spots": [
+    { "id": "plaza", "title": "Town Plaza", "near": "Town Plaza Park", "radius": 120, "blurb": "The deodar cedar here was planted in 1923 and is still the town's holiday tree." },
+    { "id": "theatre", "title": "The Theatre", "near": "Los Gatos Theatre", "radius": 120, "blurb": "Opened in 1915 as the Strand. Its neon marquee still lights the avenue." },
+    { "id": "bridge", "title": "Main Street Bridge", "bridge": "East Main Street", "radius": 115, "blurb": "Today's bridge crosses the freeway. Until the 1950s, an arched bridge of 1906 crossed the creek here." },
+    { "id": "mill", "title": "The Mill Annex", "near": "Forbes Mill Museum", "radius": 110, "blurb": "All that remains of the four-storey flour mill James Alexander Forbes built in the 1850s." },
+    { "id": "footbridge", "title": "The Footbridge", "trailBridge": true, "radius": 110, "blurb": "Walkers cross above Highway 17 here on their way to the mill." },
+    { "id": "creek", "title": "Los Gatos Creek", "creek": 0.5, "radius": 130, "blurb": "The creek runs north from here toward Vasona Lake." },
+    { "id": "trail", "title": "Creek Trail", "trail": 0.5, "radius": 130, "blurb": "The Los Gatos Creek Trail follows the water north to Vasona Lake." },
+    { "id": "library", "title": "The Library", "near": "Los Gatos Public Library", "radius": 120, "blurb": "The library stands where the town's 1908 high school once stood." },
+    { "id": "townhall", "title": "Town Hall", "near": "Los Gatos Town Hall", "radius": 120, "blurb": "Los Gatos Town Hall, in the civic centre off East Main Street." },
+    { "id": "museum", "title": "The Museum", "near": "New Museum of Los Gatos", "radius": 110, "blurb": "The town's museum of art and local history." },
+    { "id": "flame", "title": "Flame of Liberty", "near": "Flame of Liberty", "radius": 110, "blurb": "A memorial flame in the heart of town." },
+    { "id": "postoffice", "title": "The Post Office", "near": "Los Gatos Main Post Office", "radius": 120, "blurb": "The town's main post office." }
+  ]
+}

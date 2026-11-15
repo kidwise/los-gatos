@@ -7,6 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Cat, CAT_SCALE, type DebugPose } from './cat/Cat';
 import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
+import { Sketching } from './game/sketch';
 import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
@@ -92,6 +93,7 @@ async function start(): Promise<void> {
     composer.setSize(w, h);
     paper.uniforms.uRes.value.set(w * dpr, h * dpr);
     paper.uniforms.uDpr.value = dpr;
+    gouacheUniforms.uDpr.value = dpr;
     rig.resize(w / h);
   };
   window.addEventListener('resize', resize);
@@ -144,11 +146,34 @@ async function start(): Promise<void> {
     sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
   };
 
+  // Sketching: only where the world has places to discover. Elsewhere everything is simply painted.
+  let sketching: Sketching | null = null;
+  if (world.spots.length > 0 && regionId) {
+    document.body.classList.add('sketching');
+    document.getElementById('hint')!.textContent = 'Hold to walk · step into an orange ring to sketch';
+    // `?reset` forgets every sketch and starts again from pencil.
+    if (params.has('reset')) Sketching.forget(regionId);
+    sketching = new Sketching({
+      regionId,
+      regionTitle: 'Main Street',
+      spots: world.spots,
+      rig,
+      controls,
+      canvas: renderer.domElement,
+      heightAt: (x, z) => world.heightAt(x, z, 1000),
+      home: { x: pos.x, z: pos.z },
+      onSit: () => cat.sitNow(),
+    });
+    scene.add(sketching.group);
+    if (params.get('paint') === 'all') sketching.paintAll();
+  }
+
   // A small handle for automated checks while developing.
   if (import.meta.env.DEV) {
     Object.assign(window, {
       __cat: {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
+        sketch: (action: 'enter' | 'draw', id?: string) => sketching?.debug(action, id),
         go: (x: number, z: number) => {
           controls.target = new THREE.Vector3(x, 0, z);
           controls.arriving = true;
@@ -175,7 +200,8 @@ async function start(): Promise<void> {
     controls.update();
 
     let want = 0;
-    let moveDir: THREE.Vector3 | null = controls.keyDirection(dir);
+    let moveDir: THREE.Vector3 | null = sketching?.active ? null : controls.keyDirection(dir);
+    if (sketching?.active) controls.target = null;
     if (moveDir) {
       controls.target = null;
       want = controls.running ? TROT : WALK;
@@ -219,10 +245,12 @@ async function start(): Promise<void> {
       marker.material.opacity = markerLife * 0.8;
     }
 
-    rig.update(dt, focus.copy(pos).setY(pos.y + 0.45));
+    sketching?.update(dt, pos, rig.span);
+    rig.update(dt, sketching?.active ? sketching.focus : focus.copy(pos).setY(pos.y + 0.45));
     aimSun();
     openHole(dt);
     composer.render();
+    sketching?.afterRender();
   });
 }
 

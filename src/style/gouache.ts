@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { P } from './palette';
 
+export const MAX_REVEALS = 16;
+
 // Shared by every painted surface, so the whole scene shifts together.
 export const gouacheUniforms = {
   uPaper: { value: new THREE.Color(P.paper) },
@@ -13,6 +15,12 @@ export const gouacheUniforms = {
   uFade: { value: new THREE.Vector2(35, 45) },
   // A round window cut through anything that roofs over the cat: screen position and radius in pixels.
   uHole: { value: new THREE.Vector3(0, 0, 0) },
+  // Where the world has been painted. Each entry is a centre (x, z), a radius, and how far the wash
+  // has spread so far (0 to 1). Everything else is drawn in pencil. uRevealAll paints everything.
+  uReveal: { value: Array.from({ length: MAX_REVEALS }, () => new THREE.Vector4()) },
+  uRevealCount: { value: 0 },
+  uRevealAll: { value: 1 },
+  uDpr: { value: 1 },
 };
 
 const NOISE = /* glsl */ `
@@ -42,6 +50,8 @@ const PAINT = /* glsl */ `
     vec3 gBase = diffuseColor.rgb;
     // Pigment unevenness inside a fill.
     gBase *= 1.0 + (gNoise(vGNoise * 0.55) - 0.5) * 0.09;
+    float gHalf = 1.0;
+    float gLight = 1.0;
     #ifdef GOUACHE_UNLIT
       vec3 gCol = gBase;
     #else
@@ -49,12 +59,34 @@ const PAINT = /* glsl */ `
       float gLit = dot(reflectedLight.directDiffuse, vec3(1.0)) / max(dot(diffuseColor.rgb, vec3(1.0)), 1e-4);
       // Brush wobble on the boundaries between the three tones.
       float gW = (gNoise(vGNoise * 2.3) - 0.5) * 0.09;
-      float gHalf = smoothstep(0.10 + gW, 0.14 + gW, gLit);
-      float gLight = smoothstep(0.50 + gW, 0.54 + gW, gLit);
+      gHalf = smoothstep(0.10 + gW, 0.14 + gW, gLit);
+      gLight = smoothstep(0.50 + gW, 0.54 + gW, gLit);
       vec3 gCol = mix(gBase * uShadowTint, gBase * uHalfTint, gHalf);
       gCol = mix(gCol, gBase * uLightTint, gLight);
       // A fourth, brightest tone for planes turned full to the sun, so roof slopes separate.
       gCol = mix(gCol, gBase * uLightTint * 1.09, smoothstep(0.84 + gW, 0.88 + gW, gLit));
+    #endif
+    #ifndef GOUACHE_PAINTED
+      // How painted this point is: inside any wash that has reached it.
+      float gPaint = uRevealAll;
+      float gRag = (gNoise(vGWorld * 0.09) - 0.5) * 18.0 + (gNoise(vGWorld * 0.7) - 0.5) * 2.2;
+      for (int i = 0; i < ${MAX_REVEALS}; i++) {
+        if (i >= uRevealCount) break;
+        vec4 r = uReveal[i];
+        float reach = r.z * r.w;
+        gPaint = max(gPaint, (1.0 - smoothstep(reach - 4.0, reach, distance(vGWorld.xz, r.xy) + gRag * r.w)) * step(0.001, r.w));
+      }
+      // Unpainted, it is a pencil drawing: paper, a graphite wash for darker things, and hatching in shade.
+      float gLum = dot(gBase, vec3(0.3, 0.59, 0.11));
+      vec2 gPx = gl_FragCoord.xy / uDpr;
+      float gHatchA = step(0.6, fract((gPx.x + gPx.y) / 7.0));
+      float gHatchB = step(0.6, fract((gPx.x - gPx.y) / 7.0));
+      float gTone = (1.0 - gLum) * 0.2
+        + gHalf * (1.0 - gLight) * (0.04 + 0.15 * gHatchA)
+        + (1.0 - gHalf) * (0.09 + 0.2 * gHatchA + 0.15 * gHatchB);
+      vec3 gPencil = mix(uPaper, vec3(0.105, 0.1, 0.125), clamp(gTone, 0.0, 0.7));
+      gCol = mix(gPencil, gCol, gPaint);
+      gPaintOut = gPaint;
     #endif
     // The painting runs out into bare paper at its edge.
     float gD = length(max(abs(vGWorld.xz - uFadeCenter) - uFadeHalf, 0.0)) + (gNoise(vGWorld * 0.13) - 0.5) * 9.0;
@@ -72,17 +104,24 @@ export interface GouacheOptions {
   local?: boolean;
   /** Can be cut away to show the cat underneath, for bridge decks. */
   hole?: boolean;
+  /** Always in full colour, even where the world is still pencil. For the cat. */
+  painted?: boolean;
+  map?: THREE.Texture;
+  transparent?: boolean;
 }
 
 export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({
     color: opts.color ?? 0xffffff,
     vertexColors: !!opts.vertexColors,
+    map: opts.map ?? null,
+    transparent: !!opts.transparent,
   });
   mat.defines = {
     ...(opts.unlit ? { GOUACHE_UNLIT: '' } : {}),
     ...(opts.local ? { GOUACHE_LOCAL: '' } : {}),
     ...(opts.hole ? { GOUACHE_HOLE: '' } : {}),
+    ...(opts.painted ? { GOUACHE_PAINTED: '' } : {}),
   };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, gouacheUniforms);
@@ -111,10 +150,16 @@ export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
         uniform vec3 uPaper, uLightTint, uHalfTint, uShadowTint;
         uniform vec2 uFade, uFadeCenter, uFadeHalf;
         uniform vec3 uHole;
+        uniform vec4 uReveal[${MAX_REVEALS}];
+        uniform int uRevealCount;
+        uniform float uRevealAll, uDpr;
+        // Passed on in the alpha channel so the paper pass can draw pencil lines where nothing is painted.
+        float gPaintOut = 1.0;
         ${NOISE}`,
       )
-      .replace('#include <opaque_fragment>', `${PAINT}\n#include <opaque_fragment>`);
+      .replace('#include <opaque_fragment>', `${PAINT}\n#include <opaque_fragment>`)
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef OPAQUE\n  gl_FragColor.a = gPaintOut;\n#endif');
   };
-  mat.customProgramCacheKey = () => `gouache:${opts.unlit ? 'u' : ''}${opts.local ? 'l' : ''}${opts.hole ? 'h' : ''}`;
+  mat.customProgramCacheKey = () => `gouache:${opts.unlit ? 'u' : ''}${opts.local ? 'l' : ''}${opts.hole ? 'h' : ''}${opts.painted ? 'p' : ''}`;
   return mat;
 }
