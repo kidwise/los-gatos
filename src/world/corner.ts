@@ -193,7 +193,7 @@ function tree(k: Kit, colliders: Collider[], x: number, z: number, canopyY: numb
   colliders.push({ kind: 'circle', x, z, r: 0.3 });
 }
 
-function cedar(k: Kit, colliders: Collider[], x: number, z: number): void {
+export function cedar(k: Kit, colliders: Collider[], x: number, z: number): void {
   // The plaza's deodar: stacked drooping tiers.
   const p = k.paint;
   p.cyl(P.trunk, x, 1.6, z, 0.22, 0.38, 3.2, 8);
@@ -205,7 +205,7 @@ function cedar(k: Kit, colliders: Collider[], x: number, z: number): void {
   colliders.push({ kind: 'circle', x, z, r: 0.55 });
 }
 
-function lamp(k: Kit, colliders: Collider[], x: number, z: number): void {
+export function lamp(k: Kit, colliders: Collider[], x: number, z: number): void {
   const p = k.paint;
   p.cyl(P.inkGreen, x, CURB + 0.25, z, 0.09, 0.14, 0.5, 8);
   p.cyl(P.inkGreen, x, CURB + 1.9, z, 0.05, 0.06, 3.3, 8);
@@ -219,7 +219,7 @@ function lamp(k: Kit, colliders: Collider[], x: number, z: number): void {
   colliders.push({ kind: 'circle', x, z, r: 0.2 });
 }
 
-function planter(k: Kit, colliders: Collider[], x: number, z: number): void {
+export function planter(k: Kit, colliders: Collider[], x: number, z: number): void {
   const p = k.paint;
   p.cyl(P.terracotta, x, CURB + 0.3, z, 0.48, 0.36, 0.6, 12);
   p.ball(P.leafC, x, CURB + 0.72, z, 0.46, 0.32, 0.46);
@@ -230,7 +230,7 @@ function planter(k: Kit, colliders: Collider[], x: number, z: number): void {
   colliders.push({ kind: 'circle', x, z, r: 0.5 });
 }
 
-function cafeSet(k: Kit, colliders: Collider[], x: number, z: number, parasol: number | null): void {
+export function cafeSet(k: Kit, colliders: Collider[], x: number, z: number, parasol: number | null): void {
   const p = k.paint;
   p.cyl(P.warmWhite, x, CURB + 0.74, z, 0.4, 0.4, 0.04, 14);
   p.cyl(P.ink, x, CURB + 0.37, z, 0.03, 0.03, 0.74, 6);
@@ -251,20 +251,23 @@ function cafeSet(k: Kit, colliders: Collider[], x: number, z: number, parasol: n
   colliders.push({ kind: 'circle', x, z, r: 0.95 });
 }
 
-function bench(k: Kit, colliders: Collider[], x: number, z: number, ry: number): void {
+export function bench(k: Kit, colliders: Collider[], x: number, z: number, ry: number): void {
   const p = k.paint;
   const b = new THREE.Matrix4().makeRotationY(ry).setPosition(x, CURB, z);
-  p.frame.copy(b);
+  const saved = p.frame.clone();
+  p.frame.multiply(b);
   p.box(P.trunk, 0, 0.45, 0, 1.7, 0.06, 0.5);
   p.box(P.trunk, 0, 0.78, -0.24, 1.7, 0.4, 0.05);
   for (const s of [-1, 1]) p.box(P.ink, s * 0.75, 0.22, 0, 0.06, 0.45, 0.46);
-  p.frame.identity();
+  p.frame.copy(saved);
   colliders.push({ kind: 'circle', x, z, r: 0.7 });
 }
 
-function car(k: Kit, colliders: Collider[], x: number, z: number, alongX: boolean, body: number): void {
+export function car(k: Kit, colliders: Collider[], x: number, z: number, alongX: boolean, body: number): void {
   const p = k.paint;
-  p.frame.copy(new THREE.Matrix4().makeRotationY(alongX ? 0 : Math.PI / 2).setPosition(x, 0, z));
+  const saved = p.frame.clone();
+  const savedGlow = k.glow.frame.clone();
+  p.frame.multiply(new THREE.Matrix4().makeRotationY(alongX ? 0 : Math.PI / 2).setPosition(x, 0, z));
   p.box(body, 0, 0.56, 0, 4.0, 0.56, 1.66);
   p.ball(body, 1.85, 0.56, 0, 0.45, 0.28, 0.83);
   p.ball(body, -1.85, 0.56, 0, 0.45, 0.28, 0.83);
@@ -279,8 +282,8 @@ function car(k: Kit, colliders: Collider[], x: number, z: number, alongX: boolea
   k.glow.frame.copy(p.frame);
   k.glow.box(P.lampGlow, 2.27, 0.6, 0.55, 0.05, 0.12, 0.3);
   k.glow.box(P.lampGlow, 2.27, 0.6, -0.55, 0.05, 0.12, 0.3);
-  k.glow.frame.identity();
-  p.frame.identity();
+  k.glow.frame.copy(savedGlow);
+  p.frame.copy(saved);
   const hx = alongX ? 2.35 : 0.9;
   const hz = alongX ? 0.9 : 2.35;
   colliders.push({ kind: 'box', x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz });

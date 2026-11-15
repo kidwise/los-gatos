@@ -483,6 +483,92 @@ for (const el of raw.elements) {
   }
 }
 
+// ---------- Street furniture ----------
+// Trees, lamps, planters, benches and parked cars along the sidewalks, and the plaza's cedar and
+// fountain. Positions are worked out here, once, so the game only has to draw them.
+const props = { lamps: [], planters: [], benches: [], cars: [], cedar: null, fountain: null };
+{
+  const DOWNTOWN = new Set(['primary', 'secondary', 'tertiary']);
+  const roadways = lines
+    .filter((l) => STREET.has(l.kind) || l.kind === 'service' || l.kind === 'motorway' || l.kind === 'motorway_link')
+    .map((l) => ({ line: l, ...measure(l.pts) }));
+  const inside = (x, z, ring) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+      if (ring[i + 1] > z !== ring[j + 1] > z && x < ((ring[j] - ring[i]) * (z - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) hit = !hit;
+    }
+    return hit;
+  };
+  const nearBuilding = (x, z, margin) =>
+    buildings.some((b) => {
+      if (Math.hypot(b.cx - x, b.cz - z) > 90) return false;
+      if (inside(x, z, b.ring)) return true;
+      for (let i = 0; i < b.ring.length; i += 2) {
+        const j = (i + 2) % b.ring.length;
+        if (distToSegment(x, z, b.ring[i], b.ring[i + 1], b.ring[j], b.ring[j + 1]).d < margin) return true;
+      }
+      return false;
+    });
+  // Clear of buildings, and not standing in any other street or driveway.
+  const clear = (x, z, own, margin, roadGap) =>
+    inBounds(x, z, -4) && !nearBuilding(x, z, margin) && !roadways.some((o) => o.line !== own && distToLine(x, z, o.line.pts, o.cum, o.total).d < o.line.width / 2 + roadGap);
+  const pointAt = (pts, cum, d) => {
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1] < d) i++;
+    const seg = cum[i + 1] - cum[i] || 1;
+    const t = (d - cum[i]) / seg;
+    return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t, (pts[i + 1][0] - pts[i][0]) / seg, (pts[i + 1][1] - pts[i][1]) / seg];
+  };
+
+  let n = 0;
+  for (const l of lines) {
+    if (!STREET.has(l.kind) || !l.sidewalks || l.bridge) continue;
+    const { cum, total } = measure(l.pts);
+    const downtown = DOWNTOWN.has(l.kind);
+    const step = downtown ? 7 : 9;
+    let slot = 0;
+    for (let d = step / 2; d < total; d += step, slot++) {
+      const [px, pz, tx, tz] = pointAt(l.pts, cum, d);
+      for (const side of [-1, 1]) {
+        const j = slot + (side > 0 ? 1 : 0);
+        const r = hash(n++ * 7919 + 13);
+        // Just inside the curb, on the sidewalk.
+        const x = px - tz * side * (l.width / 2 + 0.55), z = pz + tx * side * (l.width / 2 + 0.55);
+        const facing = Math.atan2(tz * side, -tx * side); // turned to look at the street
+        const along = Math.atan2(-tz, tx);
+        let kind = null;
+        if (downtown) kind = j % 8 === 0 || j % 8 === 4 ? 'tree' : j % 8 === 2 ? 'lamp' : j % 8 === 6 ? (r < 0.45 ? 'planter' : r < 0.7 ? 'bench' : null) : null;
+        else kind = j % 2 === 0 && r < 0.7 ? 'tree' : null;
+        if (kind && clear(x, z, l, kind === 'bench' ? 1.3 : 0.9, 0.2)) {
+          const y = r2(ground(x, z));
+          if (kind === 'tree') trees.push(r2(x), y, r2(z), r2(1 + r * 0.25));
+          else if (kind === 'lamp') props.lamps.push(r2(x), y, r2(z), r2(along));
+          else if (kind === 'planter') props.planters.push(r2(x), y, r2(z));
+          else props.benches.push(r2(x), y, r2(z), r2(facing));
+        }
+        // Parked cars at the kerb on the wider streets, away from the corners.
+        if (downtown && l.width >= 10 && d > 13 && d < total - 13 && hash(n * 31 + 5) < 0.22) {
+          const cx = px - tz * side * (l.width / 2 - 1.05), cz = pz + tx * side * (l.width / 2 - 1.05);
+          if (clear(cx, cz, l, 0.5, 1.4)) props.cars.push(r2(cx), r2(ground(cx, cz)), r2(cz), r2(along), Math.floor(hash(n * 17 + 3) * 5));
+        }
+      }
+    }
+  }
+
+  // The plaza's deodar cedar and its fountain. Their places within the park are approximate.
+  const plaza = areas.find((a) => a.name === 'Town Plaza Park');
+  if (plaza) {
+    let cx = 0, cz = 0;
+    for (let i = 0; i < plaza.ring.length; i += 2) {
+      cx += plaza.ring[i] / (plaza.ring.length / 2);
+      cz += plaza.ring[i + 1] / (plaza.ring.length / 2);
+    }
+    const spot = (dx, dz) => (inside(cx + dx, cz + dz, plaza.ring) ? [r2(cx + dx), r2(ground(cx + dx, cz + dz)), r2(cz + dz)] : null);
+    props.cedar = spot(4.5, 3) ?? spot(0, 0);
+    props.fountain = spot(-9, -5) ?? spot(-6, 4) ?? spot(7, -6);
+  }
+}
+
 // ---------- Sketch spots, from the hand-authored overlay ----------
 const spots = [];
 const overlayPath = `data/overlays/${id}.json`;
@@ -601,6 +687,7 @@ const pack = {
   buildings,
   areas,
   trees,
+  props,
   pois,
   spots,
 };
@@ -618,6 +705,7 @@ console.log(`  ${buildings.length} buildings, ${roads.length} road pieces, ${wat
 console.log('  roads:', tally);
 console.log('  bridges:', roads.filter((r) => r.bridge).map((r) => `${r.kind} ${r.name ?? ''} y=${r.pts[1]}..${r.pts[r.pts.length - 2]}`));
 console.log(`  ${buildings.filter((b) => b.fronts.length).length} buildings with shopfronts, ${buildings.reduce((a, b) => a + b.fronts.length, 0)} shopfront walls`);
+console.log(`  street furniture: ${props.lamps.length / 4} lamps, ${props.planters.length / 3} planters, ${props.benches.length / 4} benches, ${props.cars.length / 5} parked cars, cedar ${props.cedar ? 'yes' : 'no'}, fountain ${props.fountain ? 'yes' : 'no'}`);
 console.log('  things to find:', spots.map((s) => `${s.id}/${s.kind} (${Math.round(s.x)}, ${Math.round(s.z)})`).join(', '));
 console.log('  landmarks:', pois.map((p) => p.name).join(', '));
 console.log(`  lowest ground ${Math.min(...height).toFixed(1)} m`);

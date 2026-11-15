@@ -171,12 +171,17 @@ export class Journal {
       const d = Math.hypot(f.x - cat.x, f.z - cat.z);
       const level = Math.abs(m.position.y - cat.y) < 3;
       const done = this.state.found.includes(f.id);
-      const shown = done || this.active ? 0 : THREE.MathUtils.smoothstep(SEE - d, 0, 14);
+      // At street level a ring shows only when the cat is near. Pulled back to the map view, every
+      // ring still to be found shows, grown large enough to pick out.
+      const span = this.o.rig.span;
+      const near = THREE.MathUtils.smoothstep(SEE - d, 0, 14);
+      const onMap = THREE.MathUtils.smoothstep(span, 40, 65) * (span / 26);
+      const shown = done || this.active ? 0 : Math.max(near, onMap);
       m.visible = shown > 0.01;
       if (m.visible) {
         m.children[0].scale.setScalar(shown * (1 + Math.sin(this.time * 2.4) * 0.07));
         m.children[1].scale.setScalar(shown);
-        m.children[1].position.y = 1.35 + Math.sin(this.time * 1.7) * 0.12;
+        m.children[1].position.y = (1.35 + Math.sin(this.time * 1.7) * 0.12) * Math.max(1, shown);
         m.children[1].rotation.y = this.time * 1.2;
       }
 
@@ -336,6 +341,11 @@ export class Journal {
     return this.o.finds.some((f) => f.item === item && this.state.found.includes(f.id));
   }
 
+  /** Where to look for something not found yet. */
+  private hint(f: Find): string {
+    return `Not found yet · look near ${this.o.placeName(f.x, f.z)}`;
+  }
+
   private refresh(): void {
     this.meowButton.classList.toggle('on', this.has('meow'));
   }
@@ -363,7 +373,7 @@ export class Journal {
       const got = this.state.found.includes(f.id);
       const on = !!f.item && this.state.wearing.includes(f.item);
       chip.className = `chip${got ? '' : ' unknown'}${on ? ' on' : ''}`;
-      chip.textContent = got ? `${f.title}${on ? ' · wearing' : ''}` : 'Not found yet';
+      chip.textContent = got ? `${f.title}${on ? ' · wearing' : ''}` : this.hint(f);
       chip.disabled = !got;
       chip.onclick = () => {
         if (!f.item) return;
@@ -379,7 +389,7 @@ export class Journal {
       const got = this.state.found.includes(f.id);
       const p = el('p', '', tricks);
       p.className = got ? '' : 'unknown';
-      p.innerHTML = got ? `<b>Meow</b> ${f.blurb}` : 'Not found yet';
+      p.innerHTML = got ? `<b>Meow</b> ${f.blurb}` : this.hint(f);
     }
 
     const stories = section('Stories');
@@ -387,7 +397,7 @@ export class Journal {
       const got = this.state.found.includes(f.id);
       const p = el('p', '', stories);
       p.className = got ? '' : 'unknown';
-      p.innerHTML = got ? `<b>${f.title}</b> ${f.blurb}` : 'Not found yet';
+      p.innerHTML = got ? `<b>${f.title}</b> ${f.blurb}` : this.hint(f);
     }
 
     const sketches = section(`Sketches · ${this.state.pages.length} of ${MAX_PAGES}`);

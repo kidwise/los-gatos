@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { gouache, gouacheUniforms } from '../style/gouache';
 import { P } from '../style/palette';
 import { GROUND_FLOOR, RECESS, UPPER_FLOOR, storefronts, type Kit } from './buildings';
-import type { Spot } from './corner';
+import { bench, cafeSet, car, cedar, lamp, planter, type Collider, type Spot } from './corner';
 import { bridgeGhost, millGhost, type Ghost } from './ghosts';
 import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
@@ -21,6 +21,7 @@ interface Pack {
   buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
+  props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; cedar: number[] | null; fountain: number[] | null };
   spots?: Find[];
 }
 
@@ -168,6 +169,36 @@ export async function loadRegion(id: string): Promise<World> {
   // Lines people walk along, and spots where they stand looking into shop windows.
   const walkways: number[][] = [];
   const standers: Spot[] = [];
+  const seats: Spot[] = [];
+  // Round things the cat walks around: trunks, lamp posts, planters, tables.
+  const posts: { x: number; y: number; z: number; r: number }[] = [];
+  const unused: Collider[] = [];
+  /** Draws one of the street props at a place and angle, standing on ground at height y. */
+  const stand = (x: number, y: number, z: number, ry: number, draw: () => void) => {
+    // The props were designed standing on a 0.15 m curb, so lower them by that much.
+    const frame = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y - 0.15, z);
+    kit.paint.frame.copy(frame);
+    kit.glow.frame.copy(frame);
+    draw();
+    kit.paint.frame.identity();
+    kit.glow.frame.identity();
+  };
+  /** Distance from a point to the nearest street's roadway edge; negative means on the road. */
+  const offRoad = (x: number, z: number) => {
+    let best = Infinity;
+    for (const r of pack.roads) {
+      if (!STREETS.has(r.kind) && r.kind !== 'service') continue;
+      for (let i = 0; i < r.pts.length - 3; i += 3) {
+        const ax = r.pts[i], az = r.pts[i + 2], dx = r.pts[i + 3] - ax, dz = r.pts[i + 5] - az;
+        const len2 = dx * dx + dz * dz;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len2));
+        best = Math.min(best, Math.hypot(x - (ax + dx * t), z - (az + dz * t)) - r.width / 2);
+      }
+    }
+    return best;
+  };
+  const PARASOLS = [P.persimmon, P.warmWhite, P.deepGreen, null];
+  let tables = 0;
   const lifted = (pts: number[]) => pts.map((v, i) => (i % 3 === 1 ? v + 0.05 : v));
 
   // ---- Ground: one sheet, tinted by what covers it. ----
@@ -366,6 +397,19 @@ export async function loadRegion(id: string): Promise<World> {
         const count = Math.max(1, Math.round(len / 6.5));
         const shops = Array.from({ length: count }, (_, s) => shopAt(shopCount++, hash(b.id * 31 + i * 7 + s)));
         storefronts(kit, style, shops, len, frame, b.levels, height);
+        // A table and two chairs on the sidewalk outside cafés and bakeries, where there is room.
+        shops.forEach((shop, si) => {
+          if ((shop.display !== 'cafe' && shop.display !== 'bakery') || hash(b.id * 13 + i * 3 + si) > 0.75) return;
+          const u = (si + 0.5) / count;
+          const wx = (ax - bx) / len, wz = (az - bz) / len;
+          const tx = bx + (ax - bx) * u - (ox / RECESS) * 1.75, tz = bz + (az - bz) * u - (oz / RECESS) * 1.75;
+          if (offRoad(tx, tz) < 1.1) return;
+          const turn = Math.atan2(-wz, wx);
+          const y = b.base + 0.05;
+          stand(tx, y, tz, turn, () => cafeSet(kit, unused, 0, 0, PARASOLS[tables++ % PARASOLS.length]));
+          posts.push({ x: tx, y, z: tz, r: 0.95 });
+          for (const s of [-1, 1]) seats.push({ x: tx + s * 0.72 * wx, y, z: tz + s * 0.72 * wz, heading: turn - (s * Math.PI) / 2 });
+        });
         if (hash(b.id * 17 + i) < 0.3) {
           // Someone looking in at the window.
           const f = 0.3 + hash(b.id * 5 + i) * 0.4;
@@ -496,6 +540,49 @@ export async function loadRegion(id: string): Promise<World> {
     }
   }
 
+  // ---- Street furniture placed by the pipeline. ----
+  const F = pack.props;
+  if (F) {
+    for (let i = 0; i < F.lamps.length; i += 4) {
+      stand(F.lamps[i], F.lamps[i + 1] + 0.04, F.lamps[i + 2], F.lamps[i + 3], () => lamp(kit, unused, 0, 0));
+      posts.push({ x: F.lamps[i], y: F.lamps[i + 1], z: F.lamps[i + 2], r: 0.2 });
+    }
+    for (let i = 0; i < F.planters.length; i += 3) {
+      stand(F.planters[i], F.planters[i + 1] + 0.04, F.planters[i + 2], 0, () => planter(kit, unused, 0, 0));
+      posts.push({ x: F.planters[i], y: F.planters[i + 1], z: F.planters[i + 2], r: 0.5 });
+    }
+    for (let i = 0; i < F.benches.length; i += 4) {
+      stand(F.benches[i], F.benches[i + 1] + 0.04, F.benches[i + 2], F.benches[i + 3], () => bench(kit, unused, 0, 0, 0));
+      posts.push({ x: F.benches[i], y: F.benches[i + 1], z: F.benches[i + 2], r: 0.7 });
+    }
+    const CARS = [P.cream, P.sage, P.navy, P.slateBlue, P.oxblood];
+    for (let i = 0; i < F.cars.length; i += 5) {
+      const x = F.cars[i], y = F.cars[i + 1], z = F.cars[i + 2], ry = F.cars[i + 3];
+      // Cars sit on the road surface, not the curb.
+      stand(x, y + 0.22, z, ry, () => car(kit, unused, 0, 0, true, CARS[F.cars[i + 4]]));
+      const c = Math.cos(ry), s = Math.sin(ry);
+      const corner = (lx: number, lz: number) => [x + c * lx + s * lz, z - s * lx + c * lz];
+      const box = [corner(-2.35, -0.9), corner(2.35, -0.9), corner(2.35, 0.9), corner(-2.35, 0.9)];
+      for (let k = 0; k < 4; k++) walls.push({ ax: box[k][0], az: box[k][1], bx: box[(k + 1) % 4][0], bz: box[(k + 1) % 4][1], y });
+    }
+    if (F.cedar) {
+      const [x, y, z] = F.cedar;
+      stand(x, y + 0.15, z, 0, () => cedar(kit, unused, 0, 0));
+      posts.push({ x, y, z, r: 0.55 });
+    }
+    if (F.fountain) {
+      const [x, y, z] = F.fountain;
+      stand(x, y + 0.15, z, 0, () => {
+        paint.cyl(P.stone, 0, 0.24, 0, 2.3, 2.4, 0.48, 20);
+        paint.cyl(P.water, 0, 0.46, 0, 2.0, 2.0, 0.06, 20);
+        paint.cyl(P.stone, 0, 0.8, 0, 0.2, 0.3, 1.0, 10);
+        paint.cyl(P.stone, 0, 1.32, 0, 0.85, 0.3, 0.16, 14);
+        paint.cyl(P.water, 0, 1.4, 0, 0.72, 0.72, 0.04, 14);
+      });
+      posts.push({ x, y, z, r: 2.45 });
+    }
+  }
+
   // ---- Trees. ----
   const greens = [P.leafA, P.leafB, P.leafC, P.leafSun];
   for (let i = 0; i < pack.trees.length; i += 4) {
@@ -508,6 +595,7 @@ export async function loadRegion(id: string): Promise<World> {
       const rr = (k === 0 ? 1.5 : 1.05) * s;
       paint.blob(greens[Math.floor(hash(i * 5 + k) * 4)], x + Math.cos(a) * d, y + trunk + (k === 0 ? 0.6 : 0.1) * s, z + Math.sin(a) * d, rr, rr * 0.85, rr);
     }
+    posts.push({ x, y, z, r: 0.25 * s });
   }
 
   for (const [batch, material] of [
@@ -530,7 +618,7 @@ export async function loadRegion(id: string): Promise<World> {
   group.add(kit.signs);
 
   // People on the real sidewalks and the trail, drawn only near the cat.
-  const people = new People({ seats: [], standers, walkways, walkers: 260, drawRadius: 140 });
+  const people = new People({ seats, standers, walkways, walkers: 260, drawRadius: 140 });
   group.add(people.group);
 
   // The painting fades to paper just past the region's edge.
@@ -610,6 +698,15 @@ export async function loadRegion(id: string): Promise<World> {
             }
           }
         }
+      }
+      for (const c of posts) {
+        const dx = pos.x - c.x, dz = pos.z - c.z;
+        const min = c.r + radius;
+        if (Math.abs(dx) >= min || Math.abs(dz) >= min || Math.abs(pos.y - c.y) > 2) continue;
+        const d = Math.hypot(dx, dz);
+        if (d >= min || d < 1e-5) continue;
+        pos.x = c.x + (dx / d) * min;
+        pos.z = c.z + (dz / d) * min;
       }
       pos.x = THREE.MathUtils.clamp(pos.x, B.x0 + 3, B.x1 - 3);
       pos.z = THREE.MathUtils.clamp(pos.z, B.z0 + 3, B.z1 - 3);

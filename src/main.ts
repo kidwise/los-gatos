@@ -76,6 +76,22 @@ async function start(): Promise<void> {
   scene.add(marker);
   let markerLife = 0;
 
+  // "You are here": a pin over the cat that appears as the camera pulls back, so it is never lost on the map.
+  const pinInk = new THREE.MeshBasicMaterial({ color: P.navy, transparent: true, depthTest: false, depthWrite: false });
+  const pinLight = new THREE.MeshBasicMaterial({ color: P.trim, transparent: true, depthTest: false, depthWrite: false });
+  const pin = new THREE.Group();
+  const pinHead = new THREE.Mesh(new THREE.SphereGeometry(0.62, 20, 14), pinInk);
+  pinHead.position.y = 2.25;
+  const pinTip = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.5, 20).rotateX(Math.PI).translate(0, 1.15, 0), pinInk);
+  const pinDot = new THREE.Mesh(new THREE.SphereGeometry(0.27, 14, 10), pinLight);
+  pinDot.position.y = 2.25;
+  const pinRing = new THREE.Mesh(new THREE.RingGeometry(0.75, 1.0, 32).rotateX(-Math.PI / 2), pinInk);
+  pinRing.position.y = 0.1;
+  for (const m of [pinRing, pinTip, pinHead]) m.renderOrder = 6;
+  pinDot.renderOrder = 7;
+  pin.add(pinRing, pinTip, pinHead, pinDot);
+  scene.add(pin);
+
   const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
   const composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, rig.camera));
@@ -250,6 +266,15 @@ async function start(): Promise<void> {
     // A ghost of what once stood here draws itself during its story moment.
     for (const g of world.ghosts) g.update(dt, journal?.momentId === g.spot || params.get('ghost') === g.spot);
     rig.update(dt, journal?.cameraFocus ?? focus.copy(pos).setY(pos.y + 0.45));
+    // The pin grows with the view so it stays the same size on screen.
+    const far = THREE.MathUtils.smoothstep(rig.span, 30, 50);
+    pin.visible = far > 0.01 && !journal?.cameraFocus;
+    if (pin.visible) {
+      pin.position.copy(pos);
+      pin.scale.setScalar((rig.span / 30) * (1 + Math.sin(now / 320) * 0.05));
+      pinInk.opacity = far;
+      pinLight.opacity = far;
+    }
     aimSun();
     openHole(dt);
     composer.render();
