@@ -3,6 +3,13 @@ export const P = {
   paper: 0xf3ecdf,
 
   asphalt: 0x9c95a6,
+  freeway: 0x8a8496,
+  lot: 0xaba5b3,
+  trail: 0xdcc0a2,
+  earth: 0xcdb898,
+  ground: 0xe8decd,
+  bank: 0xa7b584,
+  creekBed: 0xc9bfa6,
   roadPaint: 0xf4ecda,
   sidewalk: 0xe9dac6,
   paverJoint: 0xd8c5ae,

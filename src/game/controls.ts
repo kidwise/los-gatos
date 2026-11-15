@@ -15,6 +15,8 @@ export class Controls {
   arriving = false;
   onTap: ((point: THREE.Vector3) => void) | null = null;
   onFirstInput: (() => void) | null = null;
+  /** Height of the ground the walker is on, so taps land at that level instead of at sea level. */
+  groundY: () => number = () => 0;
 
   private pointers = new Map<number, { x: number; y: number }>();
   private down = { x: 0, y: 0, t: 0 };
@@ -79,6 +81,7 @@ export class Controls {
     const r = this.el.getBoundingClientRect();
     this.ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.rig.camera);
+    this.ground.constant = -this.groundY();
     return this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3());
   }
 

@@ -2,15 +2,15 @@ import * as THREE from 'three';
 
 const YAW = Math.PI / 4;
 const PITCH = THREE.MathUtils.degToRad(35);
-const DISTANCE = 140;
+const DISTANCE = 900;
 
 /** Tilted diorama camera that follows a point and zooms between street level and an overview. */
 export class CameraRig {
-  readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 400);
+  readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2600);
   /** Metres visible across the shorter side of the screen. */
   span = 10;
   readonly minSpan = 4.5;
-  readonly maxSpan = 70;
+  maxSpan = 70;
   private target = new THREE.Vector3();
   private aspect = 1;
   private readonly offset = new THREE.Vector3(Math.sin(YAW) * Math.cos(PITCH), Math.sin(PITCH), Math.cos(YAW) * Math.cos(PITCH)).multiplyScalar(DISTANCE);

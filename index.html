@@ -18,11 +18,13 @@
       #title em { display: block; font-size: 22px; letter-spacing: 0.01em; text-transform: none; margin-top: 2px; }
       #hint { bottom: max(22px, env(safe-area-inset-bottom)); font-style: italic; font-size: 16px; opacity: 0.7; transition: opacity 1.2s; }
       #hint.gone { opacity: 0; }
+      #credit { bottom: max(6px, env(safe-area-inset-bottom)); right: 10px; left: auto; text-align: right; font-size: 10px; opacity: 0.55; }
     </style>
   </head>
   <body>
     <div id="title" class="hud">Style study<em>The Corner</em></div>
     <div id="hint" class="hud">Hold to walk · tap to go · pinch to zoom</div>
+    <div id="credit" class="hud"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -9,12 +9,13 @@ import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
-import { buildCorner, type Collider } from './world/corner';
-import { People } from './world/people';
+import { loadRegion } from './world/region';
+import { cornerWorld, type World } from './world/world';
 
 const WALK = 1.9;
 const TROT = 4.4;
 const CAT_RADIUS = 0.2 * CAT_SCALE;
+const SUN = new THREE.Vector3(68, 76, 28).normalize();
 
 async function start(): Promise<void> {
   // Sign lettering is drawn to canvas, so the typeface must be ready first.
@@ -37,25 +38,20 @@ async function start(): Promise<void> {
 
   // One warm sun. Its strength is PI so a fully lit surface measures exactly 1 in the paint shader.
   const sun = new THREE.DirectionalLight(0xffffff, Math.PI);
-  sun.position.set(68, 76, 28);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  sun.shadow.camera.left = -56;
-  sun.shadow.camera.right = 56;
-  sun.shadow.camera.top = 56;
-  sun.shadow.camera.bottom = -56;
-  sun.shadow.camera.near = 10;
-  sun.shadow.camera.far = 220;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
 
-  const corner = buildCorner();
-  scene.add(corner.group);
-
-  const people = new People(corner.seats, corner.standers);
-  scene.add(people.group);
-  for (const s of corner.standers) corner.colliders.push({ kind: 'circle', x: s.x, z: s.z, r: 0.25 });
+  // `?region=main-street` loads a region built from the real map; without it, the style-study corner.
+  const regionId = params.get('region');
+  const world: World = regionId ? await loadRegion(regionId) : cornerWorld();
+  scene.add(world.group);
+  if (regionId) {
+    document.getElementById('title')!.innerHTML = 'Los Gatos<em>Main Street</em>';
+    document.getElementById('credit')!.textContent = 'Map data © OpenStreetMap contributors';
+  }
 
   const cat = new Cat();
   scene.add(cat.root);
@@ -65,22 +61,18 @@ async function start(): Promise<void> {
   }
 
   const rig = new CameraRig();
+  rig.maxSpan = world.maxSpan;
   rig.span = num('span', 8.5);
   const controls = new Controls(renderer.domElement, rig);
 
   // Tap marker: a ring that opens and fades where the cat is headed.
   const marker = new THREE.Mesh(
     new THREE.RingGeometry(0.22, 0.3, 28).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: P.persimmon, transparent: true, opacity: 0, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: P.persimmon, transparent: true, opacity: 0, depthWrite: false, depthTest: false }),
   );
   marker.renderOrder = 3;
   scene.add(marker);
   let markerLife = 0;
-  controls.onTap = (p) => {
-    marker.position.set(p.x, 0.2, p.z);
-    markerLife = 1;
-  };
-  controls.onFirstInput = () => document.getElementById('hint')?.classList.add('gone');
 
   const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
   const composer = new EffectComposer(renderer, target);
@@ -105,24 +97,64 @@ async function start(): Promise<void> {
   resize();
 
   // The cat's place in the world.
-  const pos = new THREE.Vector3(num('x', -3), 0, num('z', -6.2));
-  let heading = num('heading', 2.2);
+  const pos = new THREE.Vector3(num('x', world.start.x), 0, num('z', world.start.z));
+  let heading = num('heading', world.start.heading);
   let speed = 0;
   let stuck = 0;
   const dir = new THREE.Vector3();
   const focus = new THREE.Vector3();
   const before = new THREE.Vector3();
+  // Start at the highest footing here (a bridge deck, if there is one) unless told otherwise.
+  pos.y = num('y', world.heightAt(pos.x, pos.z, 1000));
 
-  const place = () => {
-    // Sidewalks and the plaza sit a curb's height above the street.
-    const onStreet = Math.abs(pos.x) < 4.5 || Math.abs(pos.z) < 4.5;
-    pos.y = THREE.MathUtils.lerp(pos.y, onStreet ? 0 : 0.15, 0.35);
+  controls.groundY = () => pos.y;
+  controls.onTap = (p) => {
+    marker.position.set(p.x, world.heightAt(p.x, p.z, pos.y) + 0.12, p.z);
+    markerLife = 1;
+  };
+  controls.onFirstInput = () => document.getElementById('hint')?.classList.add('gone');
+
+  const place = (ease: number) => {
+    pos.y = THREE.MathUtils.lerp(pos.y, world.heightAt(pos.x, pos.z, pos.y), ease);
     cat.root.position.copy(pos);
     cat.root.rotation.y = heading;
   };
-  pos.y = Math.abs(pos.x) < 4.5 || Math.abs(pos.z) < 4.5 ? 0 : 0.15;
-  place();
+  place(1);
   rig.snapTo(focus.copy(pos).setY(pos.y + 0.45));
+
+  // Shadows are drawn only around the cat, in a box that widens as the camera pulls back.
+  let shadowHalf = 0;
+  const aimSun = () => {
+    const half = Math.max(56, rig.span * 0.75);
+    if (half !== shadowHalf) {
+      shadowHalf = half;
+      const c = sun.shadow.camera;
+      c.left = c.bottom = -half;
+      c.right = c.top = half;
+      c.near = 1;
+      c.far = half * 4 + 200;
+      c.updateProjectionMatrix();
+    }
+    // Move in whole shadow-map pixels so shadow edges do not shimmer as the cat walks.
+    const texel = (half * 2) / sun.shadow.mapSize.x;
+    const sx = Math.round(pos.x / texel) * texel;
+    const sz = Math.round(pos.z / texel) * texel;
+    sun.target.position.set(sx, 0, sz);
+    sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
+  };
+
+  // A small handle for automated checks while developing.
+  if (import.meta.env.DEV) {
+    Object.assign(window, {
+      __cat: {
+        where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
+        go: (x: number, z: number) => {
+          controls.target = new THREE.Vector3(x, 0, z);
+          controls.arriving = true;
+        },
+      },
+    });
+  }
 
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((now) => {
@@ -156,18 +188,18 @@ async function start(): Promise<void> {
       const facing = Math.max(0.15, Math.cos(diff));
       before.copy(pos);
       pos.addScaledVector(moveDir, speed * facing * dt);
-      collide(pos, corner.colliders, corner.radius);
+      world.resolve(pos, CAT_RADIUS);
       // Give up on a tap the cat cannot reach.
-      const progress = before.distanceTo(pos) / Math.max(dt, 1e-4);
+      const progress = Math.hypot(before.x - pos.x, before.z - pos.z) / Math.max(dt, 1e-4);
       stuck = progress < 0.2 ? stuck + dt : 0;
       if (stuck > 0.8 && controls.arriving) {
         controls.target = null;
         stuck = 0;
       }
     }
-    place();
+    place(0.35);
     cat.update(dt, moveDir ? speed : 0);
-    people.update(dt, pos, moveDir ? speed : 0);
+    world.update(dt, pos, moveDir ? speed : 0);
 
     if (markerLife > 0) {
       markerLife = Math.max(0, markerLife - dt * 1.4);
@@ -176,40 +208,9 @@ async function start(): Promise<void> {
     }
 
     rig.update(dt, focus.copy(pos).setY(pos.y + 0.45));
+    aimSun();
     composer.render();
   });
-}
-
-/** Push the cat out of anything solid and keep it inside the painted area. */
-function collide(pos: THREE.Vector3, colliders: Collider[], radius: number): void {
-  for (const c of colliders) {
-    if (c.kind === 'box') {
-      const x0 = c.x0 - CAT_RADIUS, x1 = c.x1 + CAT_RADIUS, z0 = c.z0 - CAT_RADIUS, z1 = c.z1 + CAT_RADIUS;
-      if (pos.x <= x0 || pos.x >= x1 || pos.z <= z0 || pos.z >= z1) continue;
-      const exits = [pos.x - x0, x1 - pos.x, pos.z - z0, z1 - pos.z];
-      const side = exits.indexOf(Math.min(...exits));
-      if (side === 0) pos.x = x0;
-      else if (side === 1) pos.x = x1;
-      else if (side === 2) pos.z = z0;
-      else pos.z = z1;
-    } else {
-      const dx = pos.x - c.x;
-      const dz = pos.z - c.z;
-      const min = c.r + CAT_RADIUS;
-      const d = Math.hypot(dx, dz);
-      if (d >= min) continue;
-      if (d < 1e-4) pos.x += min;
-      else {
-        pos.x = c.x + (dx / d) * min;
-        pos.z = c.z + (dz / d) * min;
-      }
-    }
-  }
-  const d = Math.hypot(pos.x, pos.z);
-  if (d > radius) {
-    pos.x *= radius / d;
-    pos.z *= radius / d;
-  }
 }
 
 void start();

@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 const UNIT_SPHERE = new THREE.SphereGeometry(1, 16, 12);
+const UNIT_BLOB = new THREE.IcosahedronGeometry(1, 1);
 
 /** Right-triangle prism: back wall at z=0 rising to y=1, sloping down to the front edge at z=1. */
 function wedgeGeometry(): THREE.BufferGeometry {
@@ -74,6 +75,11 @@ export class Batch {
   /** Ellipsoid centred on (x, y, z). */
   ball(color: number, x: number, y: number, z: number, rx: number, ry = rx, rz = rx): void {
     this.add(UNIT_SPHERE, color, x, y, z, { sx: rx, sy: ry, sz: rz });
+  }
+
+  /** Low-detail ellipsoid, for things drawn by the hundred. */
+  blob(color: number, x: number, y: number, z: number, rx: number, ry = rx, rz = rx): void {
+    this.add(UNIT_BLOB, color, x, y, z, { sx: rx, sy: ry, sz: rz });
   }
 
   /** Upright cylinder or tapered post, centred on (x, y, z). */

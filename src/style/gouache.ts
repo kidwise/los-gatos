@@ -7,6 +7,9 @@ export const gouacheUniforms = {
   uLightTint: { value: new THREE.Color(0xfff7e8) },
   uHalfTint: { value: new THREE.Color(0xd9d4ea) },
   uShadowTint: { value: new THREE.Color(0x968cbc) },
+  // The painted area: a centre and half-size (zero half-size gives a circle), then where the fade starts and ends beyond it.
+  uFadeCenter: { value: new THREE.Vector2(0, 0) },
+  uFadeHalf: { value: new THREE.Vector2(0, 0) },
   uFade: { value: new THREE.Vector2(35, 45) },
 };
 
@@ -44,7 +47,7 @@ const PAINT = /* glsl */ `
       gCol = mix(gCol, gBase * uLightTint, gLight);
     #endif
     // The painting runs out into bare paper at its edge.
-    float gD = length(vGWorld.xz) + (gNoise(vGWorld * 0.13) - 0.5) * 9.0;
+    float gD = length(max(abs(vGWorld.xz - uFadeCenter) - uFadeHalf, 0.0)) + (gNoise(vGWorld * 0.13) - 0.5) * 9.0;
     gCol = mix(gCol, uPaper, smoothstep(uFade.x, uFade.y, gD));
     outgoingLight = gCol;
   }
@@ -93,7 +96,7 @@ export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
         varying vec3 vGWorld;
         varying vec3 vGNoise;
         uniform vec3 uPaper, uLightTint, uHalfTint, uShadowTint;
-        uniform vec2 uFade;
+        uniform vec2 uFade, uFadeCenter, uFadeHalf;
         ${NOISE}`,
       )
       .replace('#include <opaque_fragment>', `${PAINT}\n#include <opaque_fragment>`);
