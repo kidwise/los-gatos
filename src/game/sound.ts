@@ -11,9 +11,17 @@ export interface Ambience {
   town: number;
   green: number;
   train: number;
+  carousel: number;
 }
 
 const MUTE_KEY = 'los-gatos:muted';
+
+// An original eight-bar tune in three-four time, as note frequencies; 0 is a rest.
+const C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46, G5 = 783.99, A5 = 880, B5 = 987.77, C6 = 1046.5;
+const WALTZ = [
+  C5, E5, G5, E5, G5, C6, B5, G5, E5, D5, F5, A5,
+  G5, E5, C5, D5, F5, A5, G5, B5, D5, C5, 0, 0,
+];
 
 export class Sound {
   muted = false;
@@ -28,6 +36,8 @@ export class Sound {
   private nextBird = 2;
   private nextStep = 0;
   private nextWhistle = 6;
+  private nextNote = 0;
+  private note = 0;
   private time = 0;
 
   constructor() {
@@ -97,6 +107,15 @@ export class Sound {
     if (around.train > 0.25 && this.time > this.nextWhistle) {
       this.nextWhistle = this.time + 14 + Math.random() * 10;
       this.whistle(around.train);
+    }
+    // The carousel's band organ: a simple waltz, louder the nearer you are.
+    if (around.carousel > 0.05 && this.time > this.nextNote) {
+      this.nextNote = this.time + 0.26;
+      const f = WALTZ[this.note++ % WALTZ.length];
+      if (f > 0) {
+        this.tone(f, 0, 0.3, 0.05 * around.carousel, 'triangle');
+        if (this.note % 3 === 1) this.tone(f / 4, 0, 0.5, 0.06 * around.carousel, 'triangle');
+      }
     }
     // Paw steps.
     if (speed > 0.3 && this.time > this.nextStep) {

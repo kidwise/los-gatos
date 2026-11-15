@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { P } from '../style/palette';
 import { Batch, makeSign, seeded, type SignStyle } from './kit';
+import type { Ride } from './world';
 
 export type Display = 'fashion' | 'bakery' | 'books' | 'cafe' | 'flowers';
 
@@ -45,6 +46,10 @@ export interface Kit {
   glow: Batch;
   glint: Batch;
   signs: THREE.Group;
+  /** Moving parts a landmark brings with it: something to add to the scene and to move each frame. */
+  moving?: { object: THREE.Object3D; update(dt: number, time: number): void; x: number; z: number; sound?: 'carousel' }[];
+  /** Rides a landmark offers. */
+  rides?: Ride[];
 }
 
 export const GROUND_FLOOR = 4.2;

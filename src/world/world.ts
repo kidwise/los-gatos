@@ -21,6 +21,8 @@ export interface World {
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
   /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
   covered(pos: THREE.Vector3): boolean;
+  /** Things to ride. */
+  rides: Ride[];
   /** Things to find. Empty where there are none. */
   spots: Find[];
   /** People near this point stop and turn to the cat. Returns how many did. */
@@ -31,6 +33,20 @@ export interface World {
   ambience(pos: THREE.Vector3): Ambience;
   /** Things that once stood here, which draw themselves in pencil at their sketch spot. */
   ghosts: Ghost[];
+}
+
+/** Something the cat can ride. While riding, the ride decides where the cat is. */
+export interface Ride {
+  /** What the button says, for example "Hop on the train". */
+  label: string;
+  /** Close enough to get on? */
+  near(pos: THREE.Vector3): boolean;
+  /** Puts the cat's seat position into `out` and returns the way it faces. */
+  seat(out: THREE.Vector3): number;
+  /** True when the rider sits under a roof that should open to show them. */
+  roofed?: boolean;
+  /** Puts a spot to step off onto into `out`. */
+  exit(out: THREE.Vector3): void;
 }
 
 /** Something to come across in town: a history moment, a thing to wear, or an extra trick. */
@@ -98,10 +114,11 @@ export function cornerWorld(): World {
     heightAt,
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
+    rides: [],
     spots: [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     placeName: () => 'The Corner',
-    ambience: (pos) => ({ water: 0, traffic: 0, town: Math.min(1, 0.4 + people.countNear(pos.x, pos.z, 30) / 12), green: 0.35, train: 0 }),
+    ambience: (pos) => ({ water: 0, traffic: 0, town: Math.min(1, 0.4 + people.countNear(pos.x, pos.z, 30) / 12), green: 0.35, train: 0, carousel: 0 }),
     ghosts: [],
   };
 }

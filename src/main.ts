@@ -13,7 +13,7 @@ import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
 import { loadRegion } from './world/region';
-import { cornerWorld, type Find, type World } from './world/world';
+import { cornerWorld, type Find, type Ride, type World } from './world/world';
 
 const WALK = 1.9;
 const TROT = 4.4;
@@ -146,7 +146,7 @@ async function start(): Promise<void> {
     showSound();
   };
   showSound();
-  let around: Ambience = { water: 0, traffic: 0, town: 0, green: 0, train: 0 };
+  let around: Ambience = { water: 0, traffic: 0, town: 0, green: 0, train: 0, carousel: 0 };
   let listenIn = 0;
 
   const place = (ease: number) => {
@@ -219,6 +219,7 @@ async function start(): Promise<void> {
       __cat: {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
         journal: (action: 'camera' | 'draw' | 'meow') => journal?.debug(action),
+        riding: () => !!riding,
         go: (x: number, z: number) => {
           controls.target = new THREE.Vector3(x, 0, z);
           controls.arriving = true;
@@ -231,11 +232,29 @@ async function start(): Promise<void> {
   let hole = 0;
   const seen = new THREE.Vector3();
   const openHole = (dt: number) => {
-    hole = THREE.MathUtils.lerp(hole, world.covered(pos) ? 1 : 0, 1 - Math.exp(-6 * dt));
+    hole = THREE.MathUtils.lerp(hole, world.covered(pos) || riding?.roofed ? 1 : 0, 1 - Math.exp(-6 * dt));
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     seen.copy(pos).setY(pos.y + 0.4).project(rig.camera);
     const perMetre = Math.min(size.x, size.y) / rig.span;
     gouacheUniforms.uHole.value.set((seen.x * 0.5 + 0.5) * size.x, (seen.y * 0.5 + 0.5) * size.y, hole < 0.02 ? 0 : hole * Math.max(3.4 * perMetre, 70));
+  };
+
+  // Rides: near a train car or the carousel, a button offers a seat. While riding, the ride moves the cat.
+  const rideButton = document.getElementById('ride-btn') as HTMLButtonElement;
+  let riding: Ride | null = null;
+  let offered: Ride | null = null;
+  rideButton.onclick = () => {
+    if (riding) {
+      riding.exit(pos);
+      world.resolve(pos, CAT_RADIUS);
+      pos.y = world.heightAt(pos.x, pos.z, pos.y + 0.5);
+      riding = null;
+    } else if (offered) {
+      riding = offered;
+      controls.target = null;
+    }
+    offered = null;
+    rideButton.classList.remove('on');
   };
 
   const exitButton = document.getElementById('exit-btn') as HTMLButtonElement;
@@ -248,8 +267,9 @@ async function start(): Promise<void> {
     controls.update();
 
     let want = 0;
-    let moveDir: THREE.Vector3 | null = journal?.active ? null : controls.keyDirection(dir);
-    if (journal?.active) controls.target = null;
+    const held = journal?.active || !!riding;
+    let moveDir: THREE.Vector3 | null = held ? null : controls.keyDirection(dir);
+    if (held) controls.target = null;
     if (moveDir) {
       controls.target = null;
       want = controls.running ? TROT : WALK;
@@ -283,9 +303,23 @@ async function start(): Promise<void> {
         stuck = 0;
       }
     }
-    place(0.35);
+    if (!riding) place(0.35);
     cat.update(dt, moveDir ? speed : 0);
     world.update(dt, pos, moveDir ? speed : 0);
+    if (riding) {
+      // The ride carries the cat, sitting, wherever it goes.
+      heading = riding.seat(pos);
+      cat.root.position.copy(pos);
+      cat.root.rotation.y = heading;
+      cat.sitNow();
+      speed = 0;
+    }
+    const canRide = riding ?? (journal?.active ? null : world.rides.find((r) => r.near(pos)) ?? null);
+    if (canRide !== offered) {
+      offered = canRide;
+      rideButton.classList.toggle('on', !!canRide);
+      if (canRide) rideButton.textContent = riding ? 'Hop off' : canRide.label;
+    }
 
     if (markerLife > 0) {
       markerLife = Math.max(0, markerLife - dt * 1.4);

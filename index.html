@@ -99,6 +99,13 @@
         border: 1.5px solid #22324d; border-radius: 999px; padding: 11px 22px; box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
       }
       #exit-btn.on { display: block; }
+      #ride-btn {
+        position: fixed; left: 50%; bottom: max(58px, calc(env(safe-area-inset-bottom) + 50px)); transform: translateX(-50%); display: none; white-space: nowrap;
+        font-family: "Playfair Display", Georgia, serif; font-style: italic; font-size: 18px; color: #fbf6ea; background: #e0683f;
+        border: 1.5px solid #b9502c; border-radius: 999px; padding: 12px 26px; box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
+      }
+      #ride-btn.on { display: block; }
+      body.framing #ride-btn { display: none; }
       body.framing #exit-btn { display: none; }
       #sound-btn {
         position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px; font-family: "Playfair Display", Georgia, serif; color: #3a3542;
@@ -115,6 +122,7 @@
     <div id="credit" class="hud"></div>
     <button id="sound-btn"></button>
     <button id="exit-btn"></button>
+    <button id="ride-btn"></button>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

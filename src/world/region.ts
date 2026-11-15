@@ -8,7 +8,7 @@ import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
 import { shopAt } from './shops';
-import type { Find, World } from './world';
+import type { Find, Ride, World } from './world';
 
 /** A region pack, as written by pipeline/build.mjs. Coordinates are game metres: x east, z south, y up. */
 interface Pack {
@@ -18,7 +18,7 @@ interface Pack {
   terrain: { x0: number; z0: number; cell: number; cols: number; rows: number; heights: number[] };
   roads: Road[];
   water: { width: number; pts: number[] }[];
-  buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string; face?: number }[];
+  buildings: { id: number; name?: string; kind: string; levels: number; base: number; cx: number; cz: number; ring: number[]; fronts: number[]; hero?: string; face?: number }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
   props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; boats?: number[]; cedar: number[] | null; fountain: number[] | null };
@@ -330,7 +330,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       const track = edges(r.pts, 0.8);
       ribbon(layer('rail'), track.L, 0.1, 0.13);
       ribbon(layer('rail'), track.R, 0.1, 0.13);
-      if (r.bridge) bridge(r, 2.2);
+      if (r.bridge) bridge(r, 2.2, true);
     } else if (r.kind === 'sidewalk') {
       // Already drawn as part of its street.
     } else {
@@ -344,11 +344,12 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   for (const w of pack.water) ribbon(layer('water'), w.pts, w.width, 0);
 
   /** A bridge needs a deck you can stand on, sides you cannot walk through, and something holding it up. */
-  function bridge(r: Road, width: number): void {
+  function bridge(r: Road, width: number, low = false): void {
     bridges.push({ pts: r.pts, half: width / 2 });
     const { L, R } = edges(r.pts, width);
     const street = STREETS.has(r.kind);
-    const rail = street ? 1.0 : 1.1;
+    // A railway trestle has only low timber edges, so the train shows above them.
+    const rail = low ? 0.1 : street ? 1.0 : 1.1;
     const depth = street ? 1.3 : 0.4;
     for (const side of [L, R]) {
       for (let i = 0; i < side.length - 3; i += 3) {
@@ -733,9 +734,16 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   if (annex && has('mill')) ghosts.push(millGhost('mill', annex.ring, annex.base));
   for (const g of ghosts) group.add(g.group);
 
-  // The steam train, running out and back along its line.
-  const train = pack.train && pack.train.length >= 6 ? makeTrain(pack.train) : null;
+  // The steam train, running out and back along its line. Its station is beside the carousel.
+  const depot = pack.buildings.find((b) => b.hero === 'carousel');
+  const train = pack.train && pack.train.length >= 6 ? makeTrain(pack.train, depot ? { x: depot.cx, z: depot.cz } : null, deckY) : null;
   if (train) group.add(train.group);
+
+  // Moving parts that landmarks brought with them, such as the carousel.
+  const moving = kit.moving ?? [];
+  for (const m of moving) group.add(m.object);
+  const rides: Ride[] = [...(kit.rides ?? []), ...(train ? [train.ride] : [])];
+  let clock = 0;
 
   return {
     group,
@@ -785,7 +793,10 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     update(dt, cat, catSpeed) {
       people.update(dt, cat, catSpeed);
       train?.update(dt);
+      clock += dt;
+      for (const m of moving) m.update(dt, clock);
     },
+    rides,
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     ambience(pos) {
@@ -801,6 +812,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
         town,
         green: Math.max(0.12, 1 - town * 1.6),
         train: train ? 1 - THREE.MathUtils.smoothstep(Math.hypot(train.at.x - pos.x, train.at.z - pos.z), 12, 130) : 0,
+        carousel: moving.reduce((a, m) => (m.sound === 'carousel' ? Math.max(a, 1 - THREE.MathUtils.smoothstep(Math.hypot(m.x - pos.x, m.z - pos.z), 8, 90)) : a), 0),
       };
     },
     placeName(x, z) {
@@ -832,8 +844,11 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   };
 }
 
-/** A small steam engine and three open cars that run along the line and back. */
-function makeTrain(line: number[]): { group: THREE.Group; at: THREE.Vector3; update(dt: number): void } {
+/**
+ * A small steam engine and three open cars. The train runs its line out and back, pausing at each
+ * end and at the station so there is time to climb aboard.
+ */
+function makeTrain(line: number[], station: { x: number; z: number } | null, deckAt: (x: number, z: number) => number | null): { group: THREE.Group; at: THREE.Vector3; update(dt: number): void; ride: Ride } {
   const cum = [0];
   for (let i = 3; i < line.length; i += 3) cum.push(cum[cum.length - 1] + Math.hypot(line[i] - line[i - 3], line[i + 2] - line[i - 1]));
   const total = cum[cum.length - 1];
@@ -878,27 +893,78 @@ function makeTrain(line: number[]): { group: THREE.Group; at: THREE.Vector3; upd
     ),
   ];
   const GAP = 3.1;
+  const SPEED = 3.8;
+  const WAIT = 12;
+
+  // Where the train stops: both ends of the line, and the point on it nearest the station.
+  const stops = [GAP * 3 + 1, total - 1];
+  if (station) {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < line.length; i += 3) {
+      const d = Math.hypot(line[i] - station.x, line[i + 2] - station.z);
+      if (d < bestD) [best, bestD] = [cum[i / 3], d];
+    }
+    if (best > stops[0] + 30 && best < stops[1] - 30) stops.splice(1, 0, best);
+  }
+
   const at = new THREE.Vector3(line[0], line[1], line[2]);
-  // The run is walked there and back, so position goes from 0 to twice its length.
-  let run = 20;
-  const place = (mesh: THREE.Mesh, d: number, forward: boolean) => {
+  // Start waiting at the station if there is one, so the first thing a visitor finds is a train to board.
+  let head = stops.length === 3 ? stops[1] : stops[0];
+  let forward = true;
+  let waiting = WAIT;
+
+  const place = (mesh: THREE.Mesh, d: number) => {
     const along = Math.max(0, Math.min(total, d));
     let i = 0;
     while (i < cum.length - 2 && cum[i + 1] < along) i++;
     const a = i * 3;
     const span = cum[i + 1] - cum[i] || 1;
     const t = (along - cum[i]) / span;
-    mesh.position.set(line[a] + (line[a + 3] - line[a]) * t, line[a + 1] + (line[a + 4] - line[a + 1]) * t + 0.16, line[a + 2] + (line[a + 5] - line[a + 2]) * t);
+    const x = line[a] + (line[a + 3] - line[a]) * t, z = line[a + 2] + (line[a + 5] - line[a + 2]) * t;
+    // On a trestle the train rides the deck, not the ground beneath it.
+    const y = Math.max(line[a + 1] + (line[a + 4] - line[a + 1]) * t, deckAt(x, z) ?? -Infinity);
+    mesh.position.set(x, y + 0.16, z);
+    // The engine leads, so the whole train turns round at each end of the line.
     const dx = (line[a + 3] - line[a]) * (forward ? 1 : -1), dz = (line[a + 5] - line[a + 2]) * (forward ? 1 : -1);
     mesh.rotation.y = Math.atan2(-dz, dx);
   };
   const update = (dt: number) => {
-    run = (run + dt * 3.6) % (total * 2);
-    const forward = run < total;
-    const head = forward ? run : total * 2 - run;
-    cars.forEach((mesh, i) => place(mesh, head - (forward ? 1 : -1) * i * GAP, forward));
+    if (waiting > 0) {
+      waiting -= dt;
+    } else {
+      const next = forward ? stops.find((s) => s > head + 0.01) : [...stops].reverse().find((s) => s < head - 0.01);
+      if (next === undefined) {
+        forward = !forward;
+      } else {
+        // Ease in to each stop.
+        const left = Math.abs(next - head);
+        head += (forward ? 1 : -1) * Math.min(left, SPEED * Math.min(1, 0.12 + left / 9) * dt);
+        if (Math.abs(next - head) < 0.02) {
+          head = next;
+          waiting = WAIT;
+          if (next === stops[0] || next === stops[stops.length - 1]) forward = !forward;
+        }
+      }
+    }
+    cars.forEach((mesh, i) => place(mesh, head - (forward ? 1 : -1) * i * GAP));
     at.copy(cars[0].position);
   };
   update(0);
-  return { group, at, update };
+
+  // The cat rides in the first open car, behind the engine.
+  const car = cars[1];
+  const ride: Ride = {
+    label: 'Hop on the train',
+    near: (pos) => cars.some((c) => Math.hypot(c.position.x - pos.x, c.position.z - pos.z) < 4.5 && Math.abs(c.position.y - pos.y) < 3),
+    seat(out) {
+      out.copy(car.position);
+      out.y += 0.42;
+      return car.rotation.y + Math.PI / 2;
+    },
+    exit(out) {
+      // Step down beside the car.
+      out.set(car.position.x + Math.sin(car.rotation.y) * 2.2, car.position.y, car.position.z + Math.cos(car.rotation.y) * 2.2);
+    },
+  };
+  return { group, at, update, ride };
 }
