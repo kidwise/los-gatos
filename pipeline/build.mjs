@@ -134,6 +134,44 @@ for (const way of ways) {
   for (const piece of clip(pointsOf(way))) streams.push({ name: way.tags.name, tunnel: !!way.tags.tunnel, pts: piece });
 }
 
+// Lakes: large waters mapped as several ways joined into a ring.
+const lakes = [];
+for (const rel of raw.elements) {
+  if (rel.type !== 'relation' || rel.tags?.natural !== 'water') continue;
+  const parts = rel.members.filter((m) => m.type === 'way' && m.role !== 'inner').map((m) => raw.elements.find((e) => e.type === 'way' && e.id === m.ref)?.nodes).filter(Boolean).map((n) => n.slice());
+  if (parts.length === 0) continue;
+  // Join the pieces end to end.
+  const ring = parts.shift();
+  while (parts.length) {
+    const tail = ring[ring.length - 1];
+    const i = parts.findIndex((p) => p[0] === tail || p[p.length - 1] === tail);
+    if (i < 0) break;
+    const next = parts.splice(i, 1)[0];
+    if (next[0] !== tail) next.reverse();
+    ring.push(...next.slice(1));
+  }
+  const pts = ring.map((n) => nodes.get(n)).filter(Boolean);
+  if (pts.length > 3) lakes.push({ name: rel.tags.name, pts });
+}
+for (const way of ways) {
+  if (way.tags.natural === 'water' && closed(way) && way.nodes.length > 12) lakes.push({ name: way.tags.name, pts: pointsOf(way) });
+}
+const inLake = (x, z) =>
+  lakes.some((l) => {
+    let hit = false;
+    for (let i = 0, j = l.pts.length - 1; i < l.pts.length; j = i++) {
+      if (l.pts[i][1] > z !== l.pts[j][1] > z && x < ((l.pts[j][0] - l.pts[i][0]) * (z - l.pts[i][1])) / (l.pts[j][1] - l.pts[i][1]) + l.pts[i][0]) hit = !hit;
+    }
+    return hit;
+  });
+
+// The miniature railway.
+const rails = [];
+for (const way of ways) {
+  if (way.tags.railway !== 'miniature') continue;
+  for (const piece of clip(pointsOf(way))) rails.push({ name: way.tags.name, bridge: !!way.tags.bridge && way.tags.bridge !== 'no', first: way.nodes[0], last: way.nodes[way.nodes.length - 1], pts: piece });
+}
+
 // ---------- Terrain ----------
 const CELL = 3;
 const tx0 = bounds.x0 - MARGIN, tz0 = bounds.z0 - MARGIN;
@@ -168,8 +206,9 @@ function nearLine(pts, reach, fn) {
   }
 }
 
-const FREEWAY_DEPTH = 6.5 * region.scale;
-const CREEK_DEPTH = 8 * region.scale;
+const FREEWAY_DEPTH = (region.freewayDepth ?? 6.5) * region.scale;
+const CREEK_DEPTH = (region.creekDepth ?? 8) * region.scale;
+const LAKE_DEPTH = 1.3;
 
 // 1. The freeway runs in a cutting below the town.
 const motorwayNodes = new Set(lines.filter((l) => l.kind === 'motorway').flatMap((l) => [l.firstNode, l.lastNode]));
@@ -194,6 +233,19 @@ for (const s of streams) {
   nearLine(s.pts, 14, (k, d) => {
     height[k] = Math.min(height[k], -CREEK_DEPTH * (1 - smoothstep(2.5, 14, d)));
   });
+}
+// 2b. Lakes sit a little below their shores.
+for (const l of lakes) {
+  nearLine([...l.pts, l.pts[0]], 7, (k, d) => {
+    height[k] = Math.min(height[k], -LAKE_DEPTH * (1 - smoothstep(0, 7, d)));
+  });
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [x, z] of l.pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+  for (let j = Math.max(0, Math.floor((minZ - tz0) / CELL)); j <= Math.min(rows - 1, Math.ceil((maxZ - tz0) / CELL)); j++) {
+    for (let i = Math.max(0, Math.floor((minX - tx0) / CELL)); i <= Math.min(cols - 1, Math.ceil((maxX - tx0) / CELL)); i++) {
+      if (inLake(tx0 + i * CELL, tz0 + j * CELL)) height[j * cols + i] = -LAKE_DEPTH;
+    }
+  }
 }
 // 3. Streets stay at town level, on fill where they pass close to the cutting.
 for (const l of lines) {
@@ -295,6 +347,41 @@ const roads = lines.map((l) => {
   };
 });
 
+// The railway, and one long run of it for the train to travel.
+for (const r of rails) {
+  const pts = resample(r.pts, 3);
+  let ys = pts.map(([x, z]) => ground(x, z));
+  if (r.bridge) {
+    const { cum, total } = measure(pts);
+    ys = cum.map((c) => ys[0] + (ys[ys.length - 1] - ys[0]) * (total > 0 ? c / total : 0));
+  }
+  roads.push({ kind: 'rail', name: r.name, width: 1.5, bridge: r.bridge || undefined, pts: pts.flatMap(([x, z], i) => [r2(x), r2(ys[i]), r2(z)]) });
+}
+let train = null;
+if (rails.length) {
+  // Start from the longest piece and keep adding whichever piece continues from either end.
+  const left = rails.slice().sort((a, b) => measure(b.pts).total - measure(a.pts).total);
+  const first = left.shift();
+  let path = first.pts.slice(), head = first.first, tail = first.last;
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (let i = 0; i < left.length; i++) {
+      const r = left[i];
+      if (r.first === tail) { path.push(...r.pts.slice(1)); tail = r.last; }
+      else if (r.last === tail) { path.push(...r.pts.slice(0, -1).reverse()); tail = r.first; }
+      else if (r.last === head) { path.unshift(...r.pts.slice(0, -1)); head = r.first; }
+      else if (r.first === head) { path.unshift(...r.pts.slice(1).reverse()); head = r.last; }
+      else continue;
+      left.splice(i, 1);
+      grew = true;
+      break;
+    }
+  }
+  path = resample(path, 3);
+  train = path.flatMap(([x, z]) => [r2(x), r2(ground(x, z)), r2(z)]);
+  console.log(`  train run: ${Math.round(measure(path).total)} m of ${Math.round(rails.reduce((a, r) => a + measure(r.pts).total, 0))} m of track`);
+}
+
 const water = streams
   .filter((s) => !s.tunnel)
   .map((s) => {
@@ -325,6 +412,7 @@ const NO_SHOPS = new Set(['house', 'detached', 'residential', 'apartments', 'ter
 const CIVIC_USE = new Set(['library', 'place_of_worship', 'cinema', 'townhall', 'post_office', 'theatre', 'museum', 'fire_station', 'police']);
 const shopStreets = lines.filter((l) => STREET.has(l.kind) && !l.bridge);
 function shopfronts(ring, tags) {
+  if (region.shopfronts === false) return [];
   if (NO_SHOPS.has(tags.building) || CIVIC_USE.has(tags.amenity) || tags.tourism === 'museum') return [];
   const fronts = [];
   for (let i = 0; i < ring.length; i++) {
@@ -441,6 +529,11 @@ for (const way of ways) {
   areas.push({ kind: found[0], name: way.tags.name, y: r2(y), ring: ring.flatMap(([x, z]) => [r2(x), r2(z)]) });
 }
 
+for (const l of lakes) {
+  if (!l.pts.some(([x, z]) => inBounds(x, z, 0))) continue;
+  areas.push({ kind: 'lake', name: l.name, y: r2(-LAKE_DEPTH + 0.45), ring: l.pts.flatMap(([x, z]) => [r2(x), r2(z)]) });
+}
+
 // ---------- Trees and landmarks ----------
 // Flat list of x, y, z, size. Mapped street trees first, then trees scattered on the creek banks
 // and in woodland, placed by a fixed random sequence so every build gives the same result.
@@ -470,11 +563,11 @@ const pois = [];
     const x = bounds.x0 + rnd() * (bounds.x1 - bounds.x0);
     const z = bounds.z0 + rnd() * (bounds.z1 - bounds.z0);
     const y = ground(x, z);
-    const onBank = y < -1.2 && y > -CREEK_DEPTH + 0.8;
+    const onBank = y < -Math.min(1.2, CREEK_DEPTH * 0.4) && y > -CREEK_DEPTH + CREEK_DEPTH * 0.1 && !inLake(x, z);
     if (!onBank && !woods.some((a) => inRing(x, z, a.ring))) continue;
     if (keepClear.some((l) => distToLine(x, z, l.pts, l.cum, l.total).d < l.width / 2 + 2.5)) continue;
     if (openWater.some((s) => distToLine(x, z, s.pts, s.cum, s.total).d < 3.5)) continue;
-    if (buildings.some((b) => inRing(x, z, b.ring))) continue;
+    if (buildings.some((b) => inRing(x, z, b.ring)) || inLake(x, z)) continue;
     trees.push(r2(x), r2(y), r2(z), r2(0.8 + rnd() * 0.6));
     placed++;
   }
@@ -499,7 +592,7 @@ for (const el of raw.elements) {
 // ---------- Street furniture ----------
 // Trees, lamps, planters, benches and parked cars along the sidewalks, and the plaza's cedar and
 // fountain. Positions are worked out here, once, so the game only has to draw them.
-const props = { lamps: [], planters: [], benches: [], cars: [], cedar: null, fountain: null };
+const props = { lamps: [], planters: [], benches: [], cars: [], boats: [], cedar: null, fountain: null };
 {
   const DOWNTOWN = new Set(['primary', 'secondary', 'tertiary']);
   const roadways = lines
@@ -562,11 +655,25 @@ const props = { lamps: [], planters: [], benches: [], cars: [], cedar: null, fou
           else props.benches.push(r2(x), y, r2(z), r2(facing));
         }
         // Parked cars at the kerb on the wider streets, away from the corners.
-        if (downtown && l.width >= 10 && d > 13 && d < total - 13 && hash(n * 31 + 5) < 0.22) {
+        if (region.parkedCars !== false && downtown && l.width >= 10 && d > 13 && d < total - 13 && hash(n * 31 + 5) < 0.22) {
           const cx = px - tz * side * (l.width / 2 - 1.05), cz = pz + tx * side * (l.width / 2 - 1.05);
           if (clear(cx, cz, l, 0.5, 1.4)) props.cars.push(r2(cx), r2(ground(cx, cz)), r2(cz), r2(along), Math.floor(hash(n * 17 + 3) * 5));
         }
       }
+    }
+  }
+
+  // Pedal boats out on the water by the boat rental.
+  const rental = raw.elements.find((e) => e.tags?.amenity === 'boat_rental');
+  const dock = rental && (rental.type === 'node' ? nodes.get(rental.id) : pointsOf(rental)[0]);
+  if (dock && lakes.length) {
+    for (let i = 0, tries = 0; i < 7 && tries < 400; tries++) {
+      const a = hash(tries * 13 + 1) * Math.PI * 2, d = 12 + hash(tries * 7 + 3) * 70;
+      const x = dock[0] + Math.cos(a) * d, z = dock[1] + Math.sin(a) * d;
+      // Well out from the shore.
+      if (![0, 5, -5].every((o) => inLake(x + o, z) && inLake(x, z + o))) continue;
+      props.boats.push(r2(x), r2(z), r2(hash(tries * 3) * 6.28), i % 4);
+      i++;
     }
   }
 
@@ -629,6 +736,31 @@ if (existsSync(overlayPath)) {
     } else if (s.trailBridge) {
       const l = longest(lines.filter((r) => r.bridge && r.kind === 'cycleway'));
       if (l) at = alongLine(l.pts, 0.5);
+    } else if (s.rail !== undefined) {
+      // Beside the railway, a fraction of the way along the train's run.
+      if (train) {
+        const i = Math.floor((train.length / 3 - 1) * s.rail) * 3;
+        at = [train[i] + 3, train[i + 2] + 3];
+      }
+    } else if (s.lake !== undefined) {
+      // On the shore of the lake nearest a compass direction from its middle (0 = north, 0.25 = east...).
+      const l = lakes[0];
+      if (l) {
+        const cx = l.pts.reduce((a, p) => a + p[0], 0) / l.pts.length, cz = l.pts.reduce((a, p) => a + p[1], 0) / l.pts.length;
+        const dx = Math.sin(s.lake * Math.PI * 2), dz = -Math.cos(s.lake * Math.PI * 2);
+        let best = null, bestS = -Infinity;
+        for (const p of l.pts) {
+          const score = (p[0] - cx) * dx + (p[1] - cz) * dz;
+          if (score > bestS && inBounds(p[0], p[1], -45)) [best, bestS] = [p, score];
+        }
+        // Step back from the water until well clear of the shore.
+        if (best) {
+          for (let out = 8; out <= 40; out += 4) {
+            at = [best[0] + dx * out, best[1] + dz * out];
+            if ([0, 6, -6].every((o) => !inLake(at[0] + o, at[1]) && !inLake(at[0], at[1] + o))) break;
+          }
+        }
+      }
     } else if (s.creek !== undefined) {
       const l = longest(streams.filter((r) => !r.tunnel));
       if (l) {
@@ -670,13 +802,13 @@ if (existsSync(overlayPath)) {
         }
         return false;
       });
-    if (blocked(at[0], at[1])) {
+    if (blocked(at[0], at[1]) || inLake(at[0], at[1])) {
       let best = null, bestD = Infinity;
       for (const l of lines) {
         if (l.kind === 'motorway' || l.kind === 'motorway_link' || l.bridge) continue;
         for (const p of resample(l.pts, 2)) {
           const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
-          if (d < bestD && !blocked(p[0], p[1])) [best, bestD] = [p, d];
+          if (d < bestD && !blocked(p[0], p[1]) && !inLake(p[0], p[1])) [best, bestD] = [p, d];
         }
       }
       if (!best) {
@@ -707,14 +839,21 @@ const pack = {
   areas,
   trees,
   props,
+  train,
+  creekDepth: CREEK_DEPTH,
+  exits: region.exits ?? [],
   pois,
   spots,
 };
 
 mkdirSync('public/regions', { recursive: true });
 writeFileSync(`public/regions/${id}.json`, JSON.stringify(pack));
-const manifest = Object.fromEntries(Object.entries(REGIONS).map(([key, r]) => [key, { title: r.title, file: `${key}.json` }]));
-writeFileSync('public/regions/manifest.json', JSON.stringify(manifest, null, 2));
+// The manifest lists every region and what can be found in it, so the journal can show the whole town.
+const manifestPath = 'public/regions/manifest.json';
+const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {};
+for (const [key, r] of Object.entries(REGIONS)) manifest[key] = { ...manifest[key], title: r.title, file: `${key}.json` };
+manifest[id].finds = spots.map((s) => ({ id: s.id, kind: s.kind, item: s.item, title: s.title, blurb: s.blurb }));
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
 const kb = Math.round(JSON.stringify(pack).length / 1024);
 const tally = {};
@@ -727,4 +866,4 @@ console.log(`  ${buildings.filter((b) => b.fronts.length).length} buildings with
 console.log(`  street furniture: ${props.lamps.length / 4} lamps, ${props.planters.length / 3} planters, ${props.benches.length / 4} benches, ${props.cars.length / 5} parked cars, cedar ${props.cedar ? 'yes' : 'no'}, fountain ${props.fountain ? 'yes' : 'no'}`);
 console.log('  things to find:', spots.map((s) => `${s.id}/${s.kind} (${Math.round(s.x)}, ${Math.round(s.z)})`).join(', '));
 console.log('  landmarks:', pois.map((p) => p.name).join(', '));
-console.log(`  lowest ground ${Math.min(...height).toFixed(1)} m`);
+console.log(`  lowest ground ${height.reduce((a, b) => Math.min(a, b), 0).toFixed(1)} m`);

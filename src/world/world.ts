@@ -8,6 +8,9 @@ import { CORNER_WALKWAYS, People } from './people';
 /** A place the cat can walk around: the style-study corner, or a region built from the real map. */
 export interface World {
   group: THREE.Group;
+  title: string;
+  /** Edges that lead on to a neighbouring region: which one, and the z of the edge. */
+  exits: { to: string; side: 'north' | 'south'; edge: number }[];
   start: { x: number; z: number; heading: number };
   /** Widest the camera may zoom out, in metres across the short side of the screen. */
   maxSpan: number;
@@ -58,6 +61,8 @@ export function cornerWorld(): World {
 
   return {
     group,
+    title: 'The Corner',
+    exits: [],
     start: { x: -3, z: -6.2, heading: 2.2 },
     maxSpan: 70,
     resolve(pos, radius) {

@@ -21,7 +21,11 @@ interface Pack {
   buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string; face?: number }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
-  props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; cedar: number[] | null; fountain: number[] | null };
+  props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; boats?: number[]; cedar: number[] | null; fountain: number[] | null };
+  /** One long run of railway for the train: x, y, z points. */
+  train?: number[] | null;
+  creekDepth?: number;
+  exits?: { to: string; side: 'north' | 'south' }[];
   spots?: Find[];
 }
 
@@ -42,7 +46,7 @@ const HOUSES = new Set(['house', 'detached', 'residential', 'garage', 'shed', 'a
 const PITCHED_ROOFS = [P.terracotta, 0xb8664a, 0xa8785a, 0x9a8f96];
 const FLAT_ROOFS = [P.roof, 0xd3c8bb, 0xcfc6c0, 0xe0d6c8];
 const WALKABLE = new Set(['cycleway', 'footway', 'path', 'pedestrian']);
-const AREA_COLOR: Record<string, number> = { park: P.lawn, grass: P.lawn, wood: P.lawnDeep, parking: P.lot, plaza: P.plaza, pool: P.water };
+const AREA_COLOR: Record<string, number> = { lake: P.water, park: P.lawn, grass: P.lawn, wood: P.lawnDeep, parking: P.lot, plaza: P.plaza, pool: P.water };
 
 function hash(n: number): number {
   let t = (n ^ 0x9e3779b9) >>> 0;
@@ -145,7 +149,7 @@ interface Wall {
   y: number;
 }
 
-export async function loadRegion(id: string): Promise<World> {
+export async function loadRegion(id: string, from: string | null = null): Promise<World> {
   const pack: Pack = await (await fetch(`${import.meta.env.BASE_URL}regions/${id}.json`)).json();
   const T = pack.terrain;
 
@@ -159,6 +163,7 @@ export async function loadRegion(id: string): Promise<World> {
     return (a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz) / 10;
   };
 
+  const B = pack.bounds;
   const group = new THREE.Group();
   const paint = new Batch();
   // Bridges are kept apart from everything else so they can be cut away when the cat walks under them.
@@ -220,6 +225,7 @@ export async function loadRegion(id: string): Promise<World> {
     });
     const pos = new Float32Array(T.cols * T.rows * 3);
     const col = new Float32Array(T.cols * T.rows * 3);
+    const depth = pack.creekDepth ?? 8;
     const town = new THREE.Color(P.ground), bank = new THREE.Color(P.bank), bed = new THREE.Color(P.creekBed), c = new THREE.Color();
     for (let j = 0; j < T.rows; j++) {
       for (let i = 0; i < T.cols; i++) {
@@ -227,9 +233,9 @@ export async function loadRegion(id: string): Promise<World> {
         const x = T.x0 + i * T.cell, z = T.z0 + j * T.cell, y = T.heights[k] / 10;
         pos.set([x, y, z], k * 3);
         // Town level is pale; the cut banks are green; the creek bed is gravel.
-        c.copy(town).lerp(bank, THREE.MathUtils.smoothstep(-y, 0.4, 1.6)).lerp(bed, THREE.MathUtils.smoothstep(-y, 7.2, 7.9));
+        c.copy(town).lerp(bank, THREE.MathUtils.smoothstep(-y, 0.4, Math.min(1.6, depth * 0.6))).lerp(bed, THREE.MathUtils.smoothstep(-y, depth * 0.9, depth * 0.99));
         if (y > -0.6) {
-          const hit = boxed.find((b) => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && inRing(x, z, b.a.ring));
+          const hit = boxed.find((b) => b.a.kind !== 'lake' && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && inRing(x, z, b.a.ring));
           if (hit) c.set(AREA_COLOR[hit.a.kind]);
         }
         col.set([c.r, c.g, c.b], k * 3);
@@ -263,9 +269,17 @@ export async function loadRegion(id: string): Promise<World> {
       lo = Math.min(lo, y);
       hi = Math.max(hi, y);
     }
-    if (hi - lo > 0.35) continue;
+    const lake = a.kind === 'lake';
+    if (!lake && hi - lo > 0.35) continue;
     const out = new Tris();
-    const y = hi + (a.kind === 'pool' ? 0.05 : 0.025);
+    const y = lake ? a.y : hi + (a.kind === 'pool' ? 0.05 : 0.025);
+    if (lake) {
+      // The shore is as far as a cat goes.
+      for (let i = 0; i < contour.length; i++) {
+        const p = contour[i], q = contour[(i + 1) % contour.length];
+        walls.push({ ax: p.x, az: p.y, bx: q.x, bz: q.y, y: NaN });
+      }
+    }
     for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
       out.tri(contour[i].x, y, contour[i].y, contour[j].x, y, contour[j].y, contour[k].x, y, contour[k].y);
     }
@@ -309,6 +323,14 @@ export async function loadRegion(id: string): Promise<World> {
     } else if (r.kind === 'steps') {
       ribbon(layer('stone'), r.pts, r.width, 0.08);
       ribbon(layer('curb'), recut(r.pts, 0.35), r.width, 0.09, (i) => i % 2 === 0);
+    } else if (r.kind === 'rail') {
+      // Ballast, sleepers and two rails.
+      ribbon(layer('earth'), r.pts, 1.9, 0.06);
+      ribbon(layer('sleeper'), recut(r.pts, 0.45), 1.5, 0.09, (i) => i % 2 === 0);
+      const track = edges(r.pts, 0.8);
+      ribbon(layer('rail'), track.L, 0.1, 0.13);
+      ribbon(layer('rail'), track.R, 0.1, 0.13);
+      if (r.bridge) bridge(r, 2.2);
     } else if (r.kind === 'sidewalk') {
       // Already drawn as part of its street.
     } else {
@@ -349,7 +371,7 @@ export async function loadRegion(id: string): Promise<World> {
     }
   }
 
-  const LAYER_COLOR: Record<string, number> = { sidewalk: P.sidewalk, asphalt: P.asphalt, freeway: P.freeway, lot: P.lot, paint: P.roadPaint, stone: P.stone, curb: P.curb, trail: P.trail, earth: P.earth, plaza: P.plaza, water: P.water };
+  const LAYER_COLOR: Record<string, number> = { sidewalk: P.sidewalk, asphalt: P.asphalt, freeway: P.freeway, lot: P.lot, paint: P.roadPaint, stone: P.stone, curb: P.curb, trail: P.trail, earth: P.earth, plaza: P.plaza, water: P.water, sleeper: P.trunk, rail: P.steel };
   for (const [name, tris] of Object.entries(layers)) {
     if (!tris.empty) paint.add(tris.geometry(), LAYER_COLOR[name], 0, 0, 0);
   }
@@ -565,6 +587,20 @@ export async function loadRegion(id: string): Promise<World> {
       const box = [corner(-2.35, -0.9), corner(2.35, -0.9), corner(2.35, 0.9), corner(-2.35, 0.9)];
       for (let k = 0; k < 4; k++) walls.push({ ax: box[k][0], az: box[k][1], bx: box[(k + 1) % 4][0], bz: box[(k + 1) % 4][1], y });
     }
+    // Pedal boats out on the lake.
+    const lakeY = pack.areas.find((a) => a.kind === 'lake')?.y ?? 0;
+    const HULLS = [P.persimmon, P.warmWhite, P.butter, P.slateBlue];
+    for (let i = 0; F.boats && i < F.boats.length; i += 4) {
+      stand(F.boats[i], lakeY + 0.15, F.boats[i + 1], F.boats[i + 2], () => {
+        const hull = HULLS[F.boats![i + 3]];
+        paint.box(hull, 0, 0.22, 0, 2.6, 0.44, 1.5);
+        paint.ball(hull, 1.3, 0.22, 0, 0.5, 0.22, 0.75);
+        paint.box(P.warmWhite, -0.2, 0.52, 0, 1.2, 0.16, 1.2);
+        for (const sx of [-0.85, 0.5]) for (const sz of [-0.68, 0.68]) paint.cyl(P.ink, sx, 1.0, sz, 0.03, 0.03, 1.1, 5);
+        paint.box(P.trim, -0.18, 1.58, 0, 1.7, 0.08, 1.6);
+        paint.box(hull, -0.18, 1.5, 0, 1.76, 0.1, 1.66);
+      });
+    }
     if (F.cedar) {
       const [x, y, z] = F.cedar;
       stand(x, y + 0.15, z, 0, () => cedar(kit, unused, 0, 0));
@@ -622,7 +658,6 @@ export async function loadRegion(id: string): Promise<World> {
   group.add(people.group);
 
   // The painting fades to paper just past the region's edge.
-  const B = pack.bounds;
   gouacheUniforms.uFadeCenter.value.set((B.x0 + B.x1) / 2, (B.z0 + B.z1) / 2);
   gouacheUniforms.uFadeHalf.value.set((B.x1 - B.x0) / 2 - 6, (B.z1 - B.z0) / 2 - 6);
   gouacheUniforms.uFade.value.set(6, 34);
@@ -661,7 +696,22 @@ export async function loadRegion(id: string): Promise<World> {
   // Start on Main Street, a few steps before the bridge over the freeway.
   const main = pack.roads.find((r) => r.bridge && r.name?.includes('Main Street'));
   let start = { x: 0, z: 0, heading: 0 };
-  if (main) {
+  // Arriving from a neighbouring region, or starting in one without a set place: begin on the
+  // Creek Trail, just inside the edge that leads there.
+  const arriving = pack.exits?.find((e) => e.to === from) ?? (main ? undefined : pack.exits?.[0]);
+  if (arriving) {
+    const north = arriving.side === 'north';
+    let best: number[] | null = null;
+    for (const r of pack.roads) {
+      if (r.kind !== 'cycleway' || r.bridge) continue;
+      for (let i = 0; i < r.pts.length; i += 3) {
+        const z = r.pts[i + 2];
+        if (z < B.z0 + 14 || z > B.z1 - 14 || r.pts[i] < B.x0 + 14 || r.pts[i] > B.x1 - 14) continue;
+        if (!best || (north ? z < best[2] : z > best[2])) best = [r.pts[i], r.pts[i + 1], z];
+      }
+    }
+    if (best) start = { x: best[0], z: best[2], heading: north ? 0 : Math.PI };
+  } else if (main) {
     const dx = main.pts[3] - main.pts[0], dz = main.pts[5] - main.pts[2];
     const len = Math.hypot(dx, dz) || 1;
     start = { x: main.pts[0] - (dx / len) * 14, z: main.pts[2] - (dz / len) * 14 + 4, heading: Math.atan2(dx, dz) };
@@ -683,10 +733,16 @@ export async function loadRegion(id: string): Promise<World> {
   if (annex && has('mill')) ghosts.push(millGhost('mill', annex.ring, annex.base));
   for (const g of ghosts) group.add(g.group);
 
+  // The steam train, running out and back along its line.
+  const train = pack.train && pack.train.length >= 6 ? makeTrain(pack.train) : null;
+  if (train) group.add(train.group);
+
   return {
     group,
+    title: pack.title,
+    exits: (pack.exits ?? []).map((e) => ({ ...e, edge: e.side === 'north' ? B.z0 + 3 : B.z1 - 3 })),
     start,
-    maxSpan: 420,
+    maxSpan: Math.max(420, (B.z1 - B.z0) * 0.6),
     resolve(pos, radius) {
       const ix = Math.floor(pos.x / GRID), iz = Math.floor(pos.z / GRID);
       for (let pass = 0; pass < 2; pass++) {
@@ -726,7 +782,10 @@ export async function loadRegion(id: string): Promise<World> {
       if (deck !== null && deck <= currentY + 0.8) return Math.max(deck, groundY);
       return groundY;
     },
-    update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
+    update(dt, cat, catSpeed) {
+      people.update(dt, cat, catSpeed);
+      train?.update(dt);
+    },
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     ambience(pos) {
@@ -741,7 +800,7 @@ export async function loadRegion(id: string): Promise<World> {
         traffic: 1 - THREE.MathUtils.smoothstep(nearest(freewayPts), 12, 130),
         town,
         green: Math.max(0.12, 1 - town * 1.6),
-        train: 0,
+        train: train ? 1 - THREE.MathUtils.smoothstep(Math.hypot(train.at.x - pos.x, train.at.z - pos.z), 12, 130) : 0,
       };
     },
     placeName(x, z) {
@@ -771,4 +830,75 @@ export async function loadRegion(id: string): Promise<World> {
       return false;
     },
   };
+}
+
+/** A small steam engine and three open cars that run along the line and back. */
+function makeTrain(line: number[]): { group: THREE.Group; at: THREE.Vector3; update(dt: number): void } {
+  const cum = [0];
+  for (let i = 3; i < line.length; i += 3) cum.push(cum[cum.length - 1] + Math.hypot(line[i] - line[i - 3], line[i + 2] - line[i - 1]));
+  const total = cum[cum.length - 1];
+  const group = new THREE.Group();
+  const material = gouache({ vertexColors: true, local: true });
+  const vehicle = (draw: (b: Batch) => void) => {
+    const b = new Batch();
+    draw(b);
+    const mesh = b.build(material)!;
+    mesh.castShadow = true;
+    group.add(mesh);
+    return mesh;
+  };
+  const wheels = (b: Batch, xs: number[]) => {
+    for (const x of xs) for (const z of [-0.42, 0.42]) b.cyl(P.ink, x, 0.24, z, 0.24, 0.24, 0.1, 10, { rx: Math.PI / 2 });
+  };
+  // Vehicles are built facing +x.
+  const cars = [
+    vehicle((b) => {
+      b.box(P.ink, 0, 0.42, 0, 3.0, 0.2, 0.9);
+      b.cyl(P.inkGreen, 0.35, 0.95, 0, 0.42, 0.42, 1.9, 12, { rz: Math.PI / 2 });
+      b.cyl(P.brass, 1.32, 0.95, 0, 0.44, 0.44, 0.08, 12, { rz: Math.PI / 2 });
+      b.cyl(P.ink, 0.95, 1.7, 0, 0.16, 0.12, 0.7, 8);
+      b.cyl(P.ink, 0.95, 2.08, 0, 0.22, 0.16, 0.12, 8);
+      b.ball(P.brass, 0.2, 1.42, 0, 0.17, 0.2, 0.17);
+      b.box(P.inkGreen, -1.0, 1.1, 0, 0.95, 1.2, 1.0);
+      b.box(P.oxblood, -1.0, 1.75, 0, 1.2, 0.1, 1.15);
+      b.box(P.glass, -1.0, 1.3, 0.51, 0.5, 0.4, 0.02);
+      b.box(P.glass, -1.0, 1.3, -0.51, 0.5, 0.4, 0.02);
+      b.wedge(P.oxblood, 1.55, 0.3, 0, 0.9, 0.35, 0.45, Math.PI / 2);
+      wheels(b, [-0.9, 0, 0.9]);
+    }),
+    ...[P.oxblood, P.butter, P.navy].map((c) =>
+      vehicle((b) => {
+        b.box(P.ink, 0, 0.42, 0, 2.6, 0.16, 0.9);
+        b.box(c, 0, 0.72, 0.5, 2.6, 0.5, 0.06);
+        b.box(c, 0, 0.72, -0.5, 2.6, 0.5, 0.06);
+        for (const x of [-1.27, 1.27]) b.box(c, x, 0.72, 0, 0.06, 0.5, 1.0);
+        for (const x of [-0.7, 0.1, 0.9]) b.box(P.trunk, x, 0.72, 0, 0.12, 0.4, 0.9);
+        wheels(b, [-0.85, 0.85]);
+      }),
+    ),
+  ];
+  const GAP = 3.1;
+  const at = new THREE.Vector3(line[0], line[1], line[2]);
+  // The run is walked there and back, so position goes from 0 to twice its length.
+  let run = 20;
+  const place = (mesh: THREE.Mesh, d: number, forward: boolean) => {
+    const along = Math.max(0, Math.min(total, d));
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1] < along) i++;
+    const a = i * 3;
+    const span = cum[i + 1] - cum[i] || 1;
+    const t = (along - cum[i]) / span;
+    mesh.position.set(line[a] + (line[a + 3] - line[a]) * t, line[a + 1] + (line[a + 4] - line[a + 1]) * t + 0.16, line[a + 2] + (line[a + 5] - line[a + 2]) * t);
+    const dx = (line[a + 3] - line[a]) * (forward ? 1 : -1), dz = (line[a + 5] - line[a + 2]) * (forward ? 1 : -1);
+    mesh.rotation.y = Math.atan2(-dz, dx);
+  };
+  const update = (dt: number) => {
+    run = (run + dt * 3.6) % (total * 2);
+    const forward = run < total;
+    const head = forward ? run : total * 2 - run;
+    cars.forEach((mesh, i) => place(mesh, head - (forward ? 1 : -1) * i * GAP, forward));
+    at.copy(cars[0].position);
+  };
+  update(0);
+  return { group, at, update };
 }

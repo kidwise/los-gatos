@@ -1,6 +1,79 @@
 {
   "main-street": {
     "title": "Main Street",
-    "file": "main-street.json"
+    "file": "main-street.json",
+    "finds": [
+      {
+        "id": "bridge",
+        "kind": "story",
+        "title": "Main Street Bridge",
+        "blurb": "Today's bridge crosses the freeway. Until the 1950s, an arched bridge of 1906 crossed the creek here."
+      },
+      {
+        "id": "mill",
+        "kind": "story",
+        "title": "The Mill Annex",
+        "blurb": "All that remains of the four-storey flour mill James Alexander Forbes built in the 1850s."
+      },
+      {
+        "id": "school",
+        "kind": "story",
+        "title": "The High School",
+        "blurb": "The white main building was dedicated in 1925, designed by W. H. Weeks, on its rise of lawn above Main Street."
+      },
+      {
+        "id": "plaza",
+        "kind": "skill",
+        "item": "meow",
+        "title": "Town Plaza",
+        "blurb": "Under the old cedar, you find your voice. Tap Meow and people nearby stop to say hello."
+      },
+      {
+        "id": "theatre",
+        "kind": "wear",
+        "item": "beret",
+        "title": "A beret",
+        "blurb": "Left on the kerb outside the theatre. It fits rather well."
+      },
+      {
+        "id": "library",
+        "kind": "wear",
+        "item": "glasses",
+        "title": "Reading glasses",
+        "blurb": "Someone's spare pair, by the library steps. Very distinguished."
+      },
+      {
+        "id": "creek",
+        "kind": "wear",
+        "item": "daisies",
+        "title": "A daisy chain",
+        "blurb": "Woven by somebody on the creek bank and left for whoever came by."
+      }
+    ]
+  },
+  "vasona": {
+    "title": "Oak Meadow & Vasona",
+    "file": "vasona.json",
+    "finds": [
+      {
+        "id": "carousel",
+        "kind": "story",
+        "title": "The Carousel",
+        "blurb": "Built for San Francisco's 1915 exposition, and restored here by volunteers."
+      },
+      {
+        "id": "depot",
+        "kind": "wear",
+        "item": "neckerchief",
+        "title": "An engineer's neckerchief",
+        "blurb": "Red, a little sooty, and just your size. The steam train has run in this park since 1970."
+      },
+      {
+        "id": "boats",
+        "kind": "story",
+        "title": "Vasona Lake",
+        "blurb": "Pedal boats, kayaks and little sailboats go out from here in the warm months."
+      }
+    ]
   }
 }

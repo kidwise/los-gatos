@@ -13,7 +13,7 @@ import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
 import { loadRegion } from './world/region';
-import { cornerWorld, type World } from './world/world';
+import { cornerWorld, type Find, type World } from './world/world';
 
 const WALK = 1.9;
 const TROT = 4.4;
@@ -49,10 +49,10 @@ async function start(): Promise<void> {
 
   // `?region=main-street` loads a region built from the real map; without it, the style-study corner.
   const regionId = params.get('region');
-  const world: World = regionId ? await loadRegion(regionId) : cornerWorld();
+  const world: World = regionId ? await loadRegion(regionId, params.get('from')) : cornerWorld();
   scene.add(world.group);
   if (regionId) {
-    document.getElementById('title')!.innerHTML = 'Los Gatos<em>Main Street</em>';
+    document.getElementById('title')!.innerHTML = `Los Gatos<em>${world.title}</em>`;
     document.getElementById('credit')!.textContent = 'Map data © OpenStreetMap contributors';
   }
 
@@ -178,16 +178,24 @@ async function start(): Promise<void> {
     sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
   };
 
+  const regionTitles: Record<string, string> = {};
   // The journal: things found along the way, and the sketchbook. Only on the real map.
   let journal: Journal | null = null;
   if (regionId) {
     document.body.classList.add('sketching');
     // `?reset` forgets everything found and drawn.
-    if (params.has('reset')) Journal.forget(regionId);
+    if (params.has('reset')) Journal.forget();
+    // What there is to find in the other regions, for the journal's lists.
+    type Listing = Record<string, { title: string; finds?: Omit<Find, 'x' | 'z'>[] }>;
+    const manifest: Listing = await fetch(`${import.meta.env.BASE_URL}regions/manifest.json`).then((r) => r.json()).catch(() => ({}));
+    for (const e of world.exits) regionTitles[e.to] = manifest[e.to]?.title ?? e.to;
+    const elsewhere = Object.entries(manifest)
+      .filter(([key]) => key !== regionId)
+      .flatMap(([, r]) => (r.finds ?? []).map((find) => ({ find, region: r.title })));
     journal = new Journal({
-      regionId,
-      regionTitle: 'Main Street',
+      regionTitle: world.title,
       finds: world.spots,
+      elsewhere,
       rig,
       controls,
       canvas: renderer.domElement,
@@ -229,6 +237,9 @@ async function start(): Promise<void> {
     const perMetre = Math.min(size.x, size.y) / rig.span;
     gouacheUniforms.uHole.value.set((seen.x * 0.5 + 0.5) * size.x, (seen.y * 0.5 + 0.5) * size.y, hole < 0.02 ? 0 : hole * Math.max(3.4 * perMetre, 70));
   };
+
+  const exitButton = document.getElementById('exit-btn') as HTMLButtonElement;
+  let exitShown: World['exits'][number] | null = null;
 
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((now) => {
@@ -283,6 +294,16 @@ async function start(): Promise<void> {
     }
 
     journal?.update(dt, pos, !!moveDir);
+    // At an edge that leads on, offer the way to the next region.
+    const exit = world.exits.find((e) => Math.abs(pos.z - e.edge) < 18) ?? null;
+    if (exit !== exitShown) {
+      exitShown = exit;
+      exitButton.classList.toggle('on', !!exit);
+      if (exit) {
+        exitButton.textContent = `Walk on to ${regionTitles[exit.to] ?? exit.to} →`;
+        exitButton.onclick = () => (location.search = `?region=${exit.to}&from=${regionId}`);
+      }
+    }
     // A ghost of what once stood here draws itself during its story moment.
     for (const g of world.ghosts) g.update(dt, journal?.momentId === g.spot || params.get('ghost') === g.spot);
     rig.update(dt, journal?.cameraFocus ?? focus.copy(pos).setY(pos.y + 0.45));

@@ -34,9 +34,11 @@ interface Saved {
 }
 
 export interface JournalOptions {
-  regionId: string;
   regionTitle: string;
+  /** What can be found here, with places. */
   finds: Find[];
+  /** What can be found in the other regions, for the journal's lists. */
+  elsewhere: { find: Omit<Find, 'x' | 'z'>; region: string }[];
   rig: CameraRig;
   controls: Controls;
   canvas: HTMLCanvasElement;
@@ -72,7 +74,7 @@ export class Journal {
   active = false;
 
   private state: Saved = { found: [], wearing: [], pages: [] };
-  private readonly key: string;
+  private readonly key = 'los-gatos:journal';
   private markers = new Map<string, THREE.Group>();
   private inside = new Set<string>();
   private time = 0;
@@ -97,7 +99,6 @@ export class Journal {
   private toast = el('div', 'toast');
 
   constructor(private o: JournalOptions) {
-    this.key = `los-gatos:journal:${o.regionId}`;
     try {
       this.state = { ...this.state, ...JSON.parse(localStorage.getItem(this.key) ?? '{}') };
     } catch {
@@ -137,10 +138,10 @@ export class Journal {
     this.refresh();
   }
 
-  /** Forget everything found and drawn in a region. */
-  static forget(regionId: string): void {
+  /** Forget everything found and drawn. */
+  static forget(): void {
     try {
-      localStorage.removeItem(`los-gatos:journal:${regionId}`);
+      localStorage.removeItem('los-gatos:journal');
     } catch {
       // Nothing was saved anyway.
     }
@@ -341,12 +342,17 @@ export class Journal {
   private toastTimer = 0;
 
   private has(item: string): boolean {
-    return this.o.finds.some((f) => f.item === item && this.state.found.includes(f.id));
+    return this.all().some((e) => e.find.item === item && this.state.found.includes(e.find.id));
+  }
+
+  /** Everything there is to find in the whole town: here first, then elsewhere. */
+  private all(): { find: Omit<Find, 'x' | 'z'>; here: Find | null; region: string }[] {
+    return [...this.o.finds.map((f) => ({ find: f, here: f, region: this.o.regionTitle })), ...this.o.elsewhere.map((e) => ({ ...e, here: null }))];
   }
 
   /** Where to look for something not found yet. */
-  private hint(f: Find): string {
-    return `Not found yet · look near ${this.o.placeName(f.x, f.z)}`;
+  private hint(e: { here: Find | null; region: string }): string {
+    return e.here ? `Not found yet · look near ${this.o.placeName(e.here.x, e.here.z)}` : `Not found yet · somewhere in ${e.region}`;
   }
 
   private refresh(): void {
@@ -357,7 +363,7 @@ export class Journal {
     const b = this.book;
     b.innerHTML = '';
     const head = el('div', 'book-head', b);
-    head.innerHTML = `<em>Journal</em><span>${this.o.regionTitle}</span>`;
+    head.innerHTML = '<em>Journal</em><span>Los Gatos</span>';
     const close = el('button', 'book-close', head);
     close.textContent = 'Close';
     close.onclick = () => b.classList.remove('on');
@@ -370,13 +376,13 @@ export class Journal {
 
     // Wardrobe: tap to put on or take off.
     const wardrobe = section('Wardrobe');
-    const wears = this.o.finds.filter((f) => f.kind === 'wear');
-    for (const f of wears) {
+    for (const e of this.all().filter((x) => x.find.kind === 'wear')) {
+      const f = e.find;
       const chip = el('button', '', wardrobe);
       const got = this.state.found.includes(f.id);
       const on = !!f.item && this.state.wearing.includes(f.item);
       chip.className = `chip${got ? '' : ' unknown'}${on ? ' on' : ''}`;
-      chip.textContent = got ? `${f.title}${on ? ' · wearing' : ''}` : this.hint(f);
+      chip.textContent = got ? `${f.title}${on ? ' · wearing' : ''}` : this.hint(e);
       chip.disabled = !got;
       chip.onclick = () => {
         if (!f.item) return;
@@ -388,19 +394,21 @@ export class Journal {
     }
 
     const tricks = section('Tricks');
-    for (const f of this.o.finds.filter((x) => x.kind === 'skill')) {
+    for (const e of this.all().filter((x) => x.find.kind === 'skill')) {
+      const f = e.find;
       const got = this.state.found.includes(f.id);
       const p = el('p', '', tricks);
       p.className = got ? '' : 'unknown';
-      p.innerHTML = got ? `<b>Meow</b> ${f.blurb}` : this.hint(f);
+      p.innerHTML = got ? `<b>Meow</b> ${f.blurb}` : this.hint(e);
     }
 
     const stories = section('Stories');
-    for (const f of this.o.finds.filter((x) => x.kind === 'story')) {
+    for (const e of this.all().filter((x) => x.find.kind === 'story')) {
+      const f = e.find;
       const got = this.state.found.includes(f.id);
       const p = el('p', '', stories);
       p.className = got ? '' : 'unknown';
-      p.innerHTML = got ? `<b>${f.title}</b> ${f.blurb}` : this.hint(f);
+      p.innerHTML = got ? `<b>${f.title}</b> ${f.blurb}` : this.hint(e);
     }
 
     const sketches = section(`Sketches · ${this.state.pages.length} of ${MAX_PAGES}`);

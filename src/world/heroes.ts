@@ -326,7 +326,70 @@ const highSchool: HeroBuilder = (k, ring, base, face) => {
   done(k);
 };
 
+/**
+ * The W.E. "Bill" Mason Carousel: a round pavilion with a striped tent roof and a ring of horses.
+ * An impression of a 1915 carousel, not a model of this one.
+ */
+const carousel: HeroBuilder = (k, ring, base) => {
+  const p = k.paint;
+  const r = fitRectangle(ring);
+  const R = Math.max(5.5, Math.min(r.halfLong, r.halfShort) * 0.95);
+  const frame = new THREE.Matrix4().makeTranslation(r.cx, base, r.cz);
+  for (const b of [k.paint, k.glow]) b.frame.copy(frame);
+
+  p.cyl(P.stone, 0, 0.18, 0, R + 0.5, R + 0.7, 0.36, 28);
+  p.cyl(P.oxblood, 0, 0.42, 0, R - 0.3, R - 0.3, 0.12, 28);
+  // Centre drum with mirrors and lights.
+  p.cyl(P.cream, 0, 2.3, 0, 1.5, 1.5, 3.7, 12);
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    p.box(i % 2 ? P.brass : P.slateBlue, Math.cos(a) * 1.52, 2.4, Math.sin(a) * 1.52, 0.5, 1.6, 0.06, -a + Math.PI / 2);
+    k.glow.ball(P.lampGlow, Math.cos(a) * 1.6, 3.9, Math.sin(a) * 1.6, 0.1);
+  }
+  // Tent roof in alternating stripes, with a scalloped edge and a finial.
+  const N = 16;
+  for (let i = 0; i < N; i++) {
+    const a0 = (i / N) * Math.PI * 2, a1 = ((i + 1) / N) * Math.PI * 2;
+    const g = new THREE.BufferGeometry();
+    const o = R + 0.9;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 7.6, 0, Math.cos(a1) * o, 4.6, Math.sin(a1) * o, Math.cos(a0) * o, 4.6, Math.sin(a0) * o]), 3));
+    g.computeVertexNormals();
+    p.add(g, i % 2 ? P.persimmon : P.warmWhite, 0, 0, 0);
+    const am = (a0 + a1) / 2;
+    p.ball(i % 2 ? P.persimmon : P.warmWhite, Math.cos(am) * o, 4.5, Math.sin(am) * o, 0.42, 0.3, 0.42);
+    k.glow.ball(P.lampGlow, Math.cos(a0) * o, 4.42, Math.sin(a0) * o, 0.09);
+  }
+  p.cyl(P.brass, 0, 7.9, 0, 0.06, 0.1, 0.8, 6);
+  p.ball(P.brass, 0, 8.35, 0, 0.2);
+  p.box(P.oxblood, 0.3, 8.0, 0, 0.6, 0.35, 0.03);
+  // Posts round the rim.
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    p.cyl(P.trim, Math.cos(a) * (R + 0.2), 2.5, Math.sin(a) * (R + 0.2), 0.09, 0.11, 4.3, 8);
+  }
+  // Two rings of horses on brass poles, caught mid-gallop.
+  const COATS = [P.warmWhite, 0xc8a57a, P.slateBlue, P.blush, P.butter, 0x8a6f5c];
+  [[R - 1.5, 10, 0], [R - 3.3, 7, 0.4]].forEach(([rad, count, phase], ringIndex) => {
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + phase;
+      const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
+      const lift = 1.25 + Math.sin(i * 2.1 + ringIndex) * 0.35;
+      const turn = -a - Math.PI / 2;
+      const coat = COATS[(i + ringIndex * 2) % COATS.length];
+      const tx = Math.cos(turn), tz = -Math.sin(turn);
+      p.cyl(P.brass, x, 2.5, z, 0.035, 0.035, 4.2, 6);
+      p.add(new THREE.SphereGeometry(1, 10, 8), coat, x, lift, z, { sx: 0.62, sy: 0.3, sz: 0.24, ry: turn });
+      p.ball(coat, x + tx * 0.62, lift + 0.36, z + tz * 0.62, 0.2, 0.26, 0.16);
+      p.ball(coat, x + tx * 0.84, lift + 0.42, z + tz * 0.84, 0.17, 0.12, 0.11);
+      p.box([P.persimmon, P.navy, P.deepGreen][i % 3], x, lift + 0.26, z, 0.36, 0.1, 0.5, turn);
+      for (const s of [-0.4, 0.4]) p.cyl(coat, x + tx * s, lift - 0.42, z + tz * s, 0.06, 0.05, 0.6, 6);
+    }
+  });
+  for (const b of [k.paint, k.glow]) b.frame.identity();
+};
+
 export const HEROES: Record<string, HeroBuilder> = {
+  carousel,
   'mill-annex': millAnnex,
   theatre,
   library,

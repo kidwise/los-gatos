@@ -17,5 +17,21 @@ export const REGIONS = {
       { id: 'library', near: 'Los Gatos Public Library' },
       { id: 'high-school', way: 82710819, faces: 'East Main Street' },
     ],
+    exits: [{ to: 'vasona', side: 'north' }],
+  },
+  vasona: {
+    title: 'Oak Meadow & Vasona',
+    // The creek corridor north of downtown: the trail, Oak Meadow Park and Vasona Lake.
+    bbox: [37.2258, -121.9768, 37.2460, -121.9630],
+    // This region is about the parks, so the streets round them are kept plain and light.
+    shopfronts: false,
+    parkedCars: false,
+    scale: 1,
+    // Here the freeway runs at grade and the creek in a shallow bed, unlike downtown's deep cutting.
+    freewayDepth: 0.6,
+    creekDepth: 2.6,
+    heroes: [{ id: 'carousel', near: 'W.E. "Bill" Mason Carousel' }],
+    // Walking off this edge leads to the neighbouring region.
+    exits: [{ to: 'main-street', side: 'south' }],
   },
 };

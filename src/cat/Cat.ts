@@ -143,7 +143,17 @@ export class Cat {
       part(sphere, yellow, daisies, Math.cos(a) * 0.082, Math.sin(a) * 0.082, 0.008, 0.01);
     }
 
-    this.outfits = { beret, glasses, daisies };
+    const red = gouache({ color: P.oxblood, local: true, painted: true });
+    const neckerchief = new THREE.Group();
+    neckerchief.position.set(0, 0.034, 0.275);
+    neckerchief.rotation.x = Math.PI / 2 - 0.55;
+    this.hips.add(neckerchief);
+    part(new THREE.TorusGeometry(0.07, 0.02, 6, 16), red, neckerchief, 0, 0, 0);
+    const flap = part(new THREE.ConeGeometry(0.062, 0.1, 3), red, neckerchief, 0, 0.085, 0.03);
+    flap.rotation.set(-0.4, 0, Math.PI);
+    flap.scale.z = 0.35;
+
+    this.outfits = { beret, glasses, daisies, neckerchief };
     for (const g of Object.values(this.outfits)) g.visible = false;
 
     // Tail: a chain of segments, each bending a little from the last.

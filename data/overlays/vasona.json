@@ -1,0 +1,27 @@
+{
+  "note": "Things to find in Oak Meadow and Vasona. Keep these few. Placement keys are described in main-street.json, plus: rail (a fraction along the train's run) and lake (a compass direction on the lake shore: 0 north, 0.25 east, 0.5 south, 0.75 west).",
+  "spots": [
+    {
+      "id": "carousel",
+      "kind": "story",
+      "title": "The Carousel",
+      "near": "W.E. \"Bill\" Mason Carousel",
+      "blurb": "Built for San Francisco's 1915 exposition, and restored here by volunteers."
+    },
+    {
+      "id": "depot",
+      "kind": "wear",
+      "item": "neckerchief",
+      "title": "An engineer's neckerchief",
+      "rail": 0.12,
+      "blurb": "Red, a little sooty, and just your size. The steam train has run in this park since 1970."
+    },
+    {
+      "id": "boats",
+      "kind": "story",
+      "title": "Vasona Lake",
+      "near": "Vasona Boating - Los Gatos Recereation",
+      "blurb": "Pedal boats, kayaks and little sailboats go out from here in the warm months."
+    }
+  ]
+}

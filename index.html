@@ -93,6 +93,13 @@
       #book .chip.on { background: #3a3542; color: #fbf6ea; }
       #book .chip.unknown { border-style: dashed; box-shadow: none; }
       #book .remove { float: right; padding: 4px 12px; font-size: 12px; box-shadow: none; margin-top: 6px; }
+      #exit-btn {
+        position: fixed; left: 50%; top: max(70px, calc(env(safe-area-inset-top) + 60px)); transform: translateX(-50%); display: none; white-space: nowrap;
+        font-family: "Playfair Display", Georgia, serif; font-style: italic; font-size: 17px; color: #fbf6ea; background: #2f4466;
+        border: 1.5px solid #22324d; border-radius: 999px; padding: 11px 22px; box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
+      }
+      #exit-btn.on { display: block; }
+      body.framing #exit-btn { display: none; }
       #sound-btn {
         position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px; font-family: "Playfair Display", Georgia, serif; color: #3a3542;
         background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 999px; padding: 8px 14px; font-size: 13px; box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
@@ -107,6 +114,7 @@
     <div id="hint" class="hud">Hold to walk · tap to go · pinch to zoom</div>
     <div id="credit" class="hud"></div>
     <button id="sound-btn"></button>
+    <button id="exit-btn"></button>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
