@@ -38,6 +38,7 @@ export class Cat {
   private tail: THREE.Group[] = [];
   private eyes: THREE.Group[] = [];
   private ears: THREE.Mesh[] = [];
+  private outfits: Record<string, THREE.Group> = {};
 
   private phase = 0;
   private time = 0;
@@ -113,6 +114,34 @@ export class Cat {
     band.rotation.x = Math.PI / 2 - 0.55;
     part(sphere, brass, this.hips, 0, -0.036, 0.318, 0.016);
 
+    // Wardrobe: pieces the cat finds around town. All start put away.
+    const navy = gouache({ color: P.navy, local: true, painted: true });
+    const yellow = gouache({ color: P.yellow, local: true, painted: true });
+    const beret = new THREE.Group();
+    beret.position.set(0.014, 0.068, -0.008);
+    beret.rotation.set(-0.1, 0, -0.28);
+    this.head.add(beret);
+    part(sphere, navy, beret, 0, 0, 0, 0.066, 0.021, 0.062);
+    part(sphere, navy, beret, 0, 0.021, 0, 0.007);
+
+    const glasses = new THREE.Group();
+    this.head.add(glasses);
+    for (const s of [-1, 1]) part(new THREE.TorusGeometry(0.023, 0.0036, 6, 18), brass, glasses, s * 0.034, 0.012, 0.072).rotation.y = s * 0.32;
+    part(new THREE.BoxGeometry(0.024, 0.004, 0.004), brass, glasses, 0, 0.017, 0.08);
+
+    const daisies = new THREE.Group();
+    daisies.position.set(0, 0.034, 0.275);
+    daisies.rotation.x = Math.PI / 2 - 0.55;
+    this.hips.add(daisies);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      part(sphere, white, daisies, Math.cos(a) * 0.073, Math.sin(a) * 0.073, 0, 0.019);
+      part(sphere, yellow, daisies, Math.cos(a) * 0.086, Math.sin(a) * 0.086, 0, 0.008);
+    }
+
+    this.outfits = { beret, glasses, daisies };
+    for (const g of Object.values(this.outfits)) g.visible = false;
+
     // Tail: a chain of segments, each bending a little from the last.
     let parent: THREE.Object3D = this.hips;
     const segLen = 0.062;
@@ -148,6 +177,11 @@ export class Cat {
     makeLeg(true, 1, 0.75, 0.0);
 
     this.pose();
+  }
+
+  /** Put a wardrobe piece on or take it off. */
+  wear(item: string, on: boolean): void {
+    if (this.outfits[item]) this.outfits[item].visible = on;
   }
 
   /** Sit down straight away, without the usual wait. */

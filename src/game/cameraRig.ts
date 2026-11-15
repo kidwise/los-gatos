@@ -9,6 +9,8 @@ export class CameraRig {
   readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2600);
   /** Metres visible across the shorter side of the screen. */
   span = 10;
+  /** The width actually on screen, which eases toward `span`. */
+  private shown = 10;
   readonly minSpan = 4.5;
   maxSpan = 70;
   private target = new THREE.Vector3();
@@ -29,6 +31,8 @@ export class CameraRig {
   }
 
   snapTo(focus: THREE.Vector3): void {
+    this.shown = this.span;
+    this.applySpan();
     this.target.copy(focus);
     this.place();
   }
@@ -39,6 +43,10 @@ export class CameraRig {
   }
 
   update(dt: number, focus: THREE.Vector3): void {
+    if (Math.abs(this.span - this.shown) > 0.001) {
+      this.shown += (this.span - this.shown) * (1 - Math.exp(-9 * dt));
+      this.applySpan();
+    }
     const turn = Math.atan2(Math.sin(this.yawGoal - this.yaw), Math.cos(this.yawGoal - this.yaw));
     this.yaw += turn * (1 - Math.exp(-2.6 * dt));
     this.target.lerp(focus, 1 - Math.exp(-5 * dt));
@@ -58,7 +66,7 @@ export class CameraRig {
   }
 
   private applySpan(): void {
-    const h = this.aspect >= 1 ? this.span : this.span / this.aspect;
+    const h = this.aspect >= 1 ? this.shown : this.shown / this.aspect;
     const w = h * this.aspect;
     this.camera.left = -w / 2;
     this.camera.right = w / 2;

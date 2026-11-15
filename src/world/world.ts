@@ -17,20 +17,26 @@ export interface World {
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
   /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
   covered(pos: THREE.Vector3): boolean;
-  /** Places to sketch. Empty where there is nothing to discover. */
-  spots: SketchSpot[];
+  /** Things to find. Empty where there are none. */
+  spots: Find[];
+  /** People near this point stop and turn to the cat. Returns how many did. */
+  charm(pos: THREE.Vector3): number;
+  /** A name for wherever this is. */
+  placeName(x: number, z: number): string;
   /** Things that once stood here, which draw themselves in pencil at their sketch spot. */
   ghosts: Ghost[];
 }
 
-export interface SketchSpot {
+/** Something to come across in town: a history moment, a thing to wear, or an extra trick. */
+export interface Find {
   id: string;
+  kind: 'story' | 'wear' | 'skill';
+  /** Which wardrobe piece or trick this gives. */
+  item?: string;
   title: string;
   blurb: string;
   x: number;
   z: number;
-  /** How far the colour spreads once this spot is sketched. */
-  radius: number;
 }
 
 export function cornerWorld(): World {
@@ -85,6 +91,8 @@ export function cornerWorld(): World {
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     covered: () => false,
     spots: [],
+    charm: (pos) => people.call(pos.x, pos.z, 11),
+    placeName: () => 'The Corner',
     ghosts: [],
   };
 }

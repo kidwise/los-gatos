@@ -67,6 +67,32 @@
       #book figcaption b { display: block; font-size: 18px; margin-top: 8px; }
       #book figcaption span { display: block; font-style: italic; font-size: 14px; margin-top: 3px; }
       #book figcaption i { display: block; font-size: 11px; letter-spacing: 0.1em; opacity: 0.6; margin-top: 6px; }
+      #cam-btn, #meow-btn, #book .chip, #book .remove {
+        font-family: "Playfair Display", Georgia, serif; color: #3a3542; background: #fbf6ea;
+        border: 1.5px solid #3a3542; border-radius: 999px; padding: 9px 18px; font-size: 15px;
+        box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
+      }
+      #cam-btn, #meow-btn { position: fixed; bottom: max(58px, calc(env(safe-area-inset-bottom) + 50px)); display: none; }
+      #cam-btn { right: 14px; }
+      #meow-btn { left: 14px; }
+      body.sketching #cam-btn, body.sketching #meow-btn.on { display: block; }
+      body.framing #cam-btn, body.framing #meow-btn, body.framing #hint { display: none !important; }
+      #mrrp {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -70px); pointer-events: none; opacity: 0;
+        font-family: "Playfair Display", Georgia, serif; font-style: italic; font-size: 22px; color: #3a3542;
+        text-shadow: 0 0 6px #f3ecdf, 0 0 12px #f3ecdf;
+      }
+      #mrrp.on { animation: mrrp 1.3s ease-out; }
+      @keyframes mrrp { 0% { opacity: 0; transform: translate(-50%, -50px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -105px); } }
+      #book section { max-width: 980px; margin: 0 auto 22px; }
+      #book h3 { font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 500; opacity: 0.7; margin: 0 0 10px; }
+      #book section p { margin: 0 0 8px; font-size: 16px; font-style: italic; }
+      #book section p b { font-style: normal; margin-right: 6px; }
+      #book .unknown { opacity: 0.5; }
+      #book .chip { margin: 0 8px 8px 0; }
+      #book .chip.on { background: #3a3542; color: #fbf6ea; }
+      #book .chip.unknown { border-style: dashed; box-shadow: none; }
+      #book .remove { float: right; padding: 4px 12px; font-size: 12px; box-shadow: none; margin-top: 6px; }
       #credit { bottom: max(6px, env(safe-area-inset-bottom)); right: 10px; left: auto; text-align: right; font-size: 10px; opacity: 0.55; }
     </style>
   </head>

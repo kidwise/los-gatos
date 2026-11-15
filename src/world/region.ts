@@ -8,7 +8,7 @@ import { HEROES, fitRectangle } from './heroes';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
 import { shopAt } from './shops';
-import type { SketchSpot, World } from './world';
+import type { Find, World } from './world';
 
 /** A region pack, as written by pipeline/build.mjs. Coordinates are game metres: x east, z south, y up. */
 interface Pack {
@@ -21,7 +21,7 @@ interface Pack {
   buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
-  spots?: SketchSpot[];
+  spots?: Find[];
 }
 
 interface Road {
@@ -623,6 +623,19 @@ export async function loadRegion(id: string): Promise<World> {
     },
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
     spots: pack.spots ?? [],
+    charm: (pos) => people.call(pos.x, pos.z, 11),
+    placeName(x, z) {
+      // The nearest named street or trail.
+      let best = pack.title, bestD = 60;
+      for (const r of pack.roads) {
+        if (!r.name) continue;
+        for (let i = 0; i < r.pts.length; i += 3) {
+          const d = Math.hypot(r.pts[i] - x, r.pts[i + 2] - z);
+          if (d < bestD) [best, bestD] = [r.name, d];
+        }
+      }
+      return best;
+    },
     ghosts,
     covered(pos) {
       // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.

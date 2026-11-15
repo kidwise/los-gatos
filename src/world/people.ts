@@ -119,6 +119,8 @@ interface Person {
   greet: number;
   greetTime: number;
   cooldown: number;
+  /** Seconds left of having been called over by a meow. */
+  called: number;
   seed: number;
 }
 
@@ -261,7 +263,7 @@ export class People {
         x: 0, y: 0.15, z: 0, heading: 0,
         line: null, cum: [], seg: 0, way: -1, leader: null, lag: 0, dist: 0, speed: 0, side: 0,
         phase: rand(), shownPhase: 0,
-        greet: 0, greetTime: 0, cooldown: 0,
+        greet: 0, greetTime: 0, cooldown: 0, called: 0,
         seed: rand() * 100,
       };
     };
@@ -309,6 +311,17 @@ export class People {
     });
 
     this.draw();
+  }
+
+  /** A meow: walkers within earshot stop and turn to the cat for a few seconds. Returns how many heard. */
+  call(x: number, z: number, radius: number): number {
+    let heard = 0;
+    for (const p of this.folk) {
+      if (p.mode !== 'walk' || p.leader || Math.hypot(p.x - x, p.z - z) > radius) continue;
+      p.called = 3 + this.rand() * 1.5;
+      heard++;
+    }
+    return heard;
   }
 
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void {
@@ -380,7 +393,8 @@ export class People {
     // A cat that has stopped nearby is worth stopping for.
     p.cooldown = Math.max(0, p.cooldown - dt);
     const near = Math.hypot(cat.x - p.x, cat.z - p.z) < 1.5 && Math.abs(cat.y - p.y) < 1.5;
-    const greeting = near && catSpeed < 0.3 && p.cooldown === 0 && p.greetTime < 5;
+    p.called = Math.max(0, p.called - dt);
+    const greeting = p.called > 0 || (near && catSpeed < 0.3 && p.cooldown === 0 && p.greetTime < 5);
     if (greeting) p.greetTime += dt;
     else if (p.greetTime > 0) {
       if (p.greetTime > 0.5) p.cooldown = 8;

@@ -581,7 +581,7 @@ if (existsSync(overlayPath)) {
       console.log(`  spot "${s.id}" was inside a building; moved ${bestD.toFixed(0)} m to clear ground`);
       at = best;
     }
-    spots.push({ id: s.id, title: s.title, blurb: s.blurb, radius: s.radius, x: r2(at[0]), z: r2(at[1]) });
+    spots.push({ id: s.id, kind: s.kind, item: s.item, title: s.title, blurb: s.blurb, x: r2(at[0]), z: r2(at[1]) });
   }
 }
 
@@ -618,6 +618,6 @@ console.log(`  ${buildings.length} buildings, ${roads.length} road pieces, ${wat
 console.log('  roads:', tally);
 console.log('  bridges:', roads.filter((r) => r.bridge).map((r) => `${r.kind} ${r.name ?? ''} y=${r.pts[1]}..${r.pts[r.pts.length - 2]}`));
 console.log(`  ${buildings.filter((b) => b.fronts.length).length} buildings with shopfronts, ${buildings.reduce((a, b) => a + b.fronts.length, 0)} shopfront walls`);
-console.log('  sketch spots:', spots.map((s) => `${s.id} (${Math.round(s.x)}, ${Math.round(s.z)})`).join(', '));
+console.log('  things to find:', spots.map((s) => `${s.id}/${s.kind} (${Math.round(s.x)}, ${Math.round(s.z)})`).join(', '));
 console.log('  landmarks:', pois.map((p) => p.name).join(', '));
 console.log(`  lowest ground ${Math.min(...height).toFixed(1)} m`);

@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Cat, CAT_SCALE, type DebugPose } from './cat/Cat';
 import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
-import { Sketching } from './game/sketch';
+import { Journal } from './game/journal';
 import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
@@ -104,7 +104,6 @@ async function start(): Promise<void> {
   let heading = num('heading', world.start.heading);
   let speed = 0;
   let stuck = 0;
-  let still = 0;
   const dir = new THREE.Vector3();
   const focus = new THREE.Vector3();
   const before = new THREE.Vector3();
@@ -147,27 +146,27 @@ async function start(): Promise<void> {
     sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
   };
 
-  // Sketching: only where the world has places to discover. Elsewhere everything is simply painted.
-  let sketching: Sketching | null = null;
-  if (world.spots.length > 0 && regionId) {
+  // The journal: things found along the way, and the sketchbook. Only on the real map.
+  let journal: Journal | null = null;
+  if (regionId) {
     document.body.classList.add('sketching');
-    document.getElementById('hint')!.textContent = 'Hold to walk · step into an orange ring to sketch';
-    // `?reset` forgets every sketch and starts again from pencil.
-    if (params.has('reset')) Sketching.forget(regionId);
-    sketching = new Sketching({
+    // `?reset` forgets everything found and drawn.
+    if (params.has('reset')) Journal.forget(regionId);
+    journal = new Journal({
       regionId,
       regionTitle: 'Main Street',
-      spots: world.spots,
+      finds: world.spots,
       rig,
       controls,
       canvas: renderer.domElement,
       heightAt: (x, z) => world.heightAt(x, z, 1000),
-      home: { x: pos.x, z: pos.z },
-      onSit: () => cat.sitNow(),
+      placeName: (x, z) => world.placeName(x, z),
       view: (id) => world.ghosts.find((g) => g.spot === id)?.view ?? null,
+      onSit: () => cat.sitNow(),
+      onWear: (item, on) => cat.wear(item, on),
+      onMeow: () => world.charm(pos),
     });
-    scene.add(sketching.group);
-    if (params.get('paint') === 'all') sketching.paintAll();
+    scene.add(journal.group);
   }
 
   // A small handle for automated checks while developing.
@@ -175,7 +174,7 @@ async function start(): Promise<void> {
     Object.assign(window, {
       __cat: {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
-        sketch: (action: 'enter' | 'draw', id?: string) => sketching?.debug(action, id),
+        journal: (action: 'camera' | 'draw' | 'meow') => journal?.debug(action),
         go: (x: number, z: number) => {
           controls.target = new THREE.Vector3(x, 0, z);
           controls.arriving = true;
@@ -202,8 +201,8 @@ async function start(): Promise<void> {
     controls.update();
 
     let want = 0;
-    let moveDir: THREE.Vector3 | null = sketching?.active ? null : controls.keyDirection(dir);
-    if (sketching?.active) controls.target = null;
+    let moveDir: THREE.Vector3 | null = journal?.active ? null : controls.keyDirection(dir);
+    if (journal?.active) controls.target = null;
     if (moveDir) {
       controls.target = null;
       want = controls.running ? TROT : WALK;
@@ -247,18 +246,14 @@ async function start(): Promise<void> {
       marker.material.opacity = markerLife * 0.8;
     }
 
-    sketching?.update(dt, pos, rig.span);
-    // A ghost draws itself while its spot is being framed, or when the cat sits quietly beside it.
-    still = moveDir ? 0 : still + dt;
-    for (const g of world.ghosts) {
-      const beside = Math.hypot(g.x - pos.x, g.z - pos.z) < 45 && still > 3;
-      g.update(dt, sketching?.framingId === g.spot || beside || params.get('ghost') === g.spot);
-    }
-    rig.update(dt, sketching?.active ? sketching.focus : focus.copy(pos).setY(pos.y + 0.45));
+    journal?.update(dt, pos, !!moveDir);
+    // A ghost of what once stood here draws itself during its story moment.
+    for (const g of world.ghosts) g.update(dt, journal?.momentId === g.spot || params.get('ghost') === g.spot);
+    rig.update(dt, journal?.cameraFocus ?? focus.copy(pos).setY(pos.y + 0.45));
     aimSun();
     openHole(dt);
     composer.render();
-    sketching?.afterRender();
+    journal?.afterRender();
   });
 }
 
