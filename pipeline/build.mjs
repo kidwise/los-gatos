@@ -222,7 +222,37 @@ for (const l of lines) {
     });
   }
 }
-// 5. Soften.
+// 5. Buildings on a slope get a level pad to stand on, so no wall is half buried.
+for (const way of ways) {
+  if (!way.tags.building || !closed(way)) continue;
+  const ring = pointsOf(way).slice(0, -1);
+  if (ring.length < 3 || !ring.some(([x, z]) => inBounds(x, z, 10))) continue;
+  const ys = ring.map(([x, z]) => sample(height, x, z));
+  const lo = Math.min(...ys), hi = Math.max(...ys);
+  if (hi - lo < 0.25) continue;
+  const pad = (lo + hi) / 2;
+  const flat = ring.flat();
+  const inside = (x, z) => {
+    let hit = false;
+    for (let i = 0, j = flat.length - 2; i < flat.length; j = i, i += 2) {
+      if (flat[i + 1] > z !== flat[j + 1] > z && x < ((flat[j] - flat[i]) * (z - flat[i + 1])) / (flat[j + 1] - flat[i + 1]) + flat[i]) hit = !hit;
+    }
+    return hit;
+  };
+  nearLine([...ring, ring[0]], 5, (k, d) => {
+    const w = 1 - smoothstep(0.5, 5, d);
+    height[k] = height[k] * (1 - w) + pad * w;
+  });
+  // The strip above only reaches the edges; fill the middle of large footprints too.
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [x, z] of ring) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+  for (let j = Math.max(0, Math.floor((minZ - tz0) / CELL)); j <= Math.min(rows - 1, Math.ceil((maxZ - tz0) / CELL)); j++) {
+    for (let i = Math.max(0, Math.floor((minX - tx0) / CELL)); i <= Math.min(cols - 1, Math.ceil((maxX - tx0) / CELL)); i++) {
+      if (inside(tx0 + i * CELL, tz0 + j * CELL)) height[j * cols + i] = pad;
+    }
+  }
+}
+// 6. Soften.
 {
   const out = new Float32Array(height.length);
   for (let j = 0; j < rows; j++) {
@@ -290,6 +320,39 @@ function levelsOf(way) {
   return h < 0.45 ? 1 : h < 0.92 ? 2 : 3;
 }
 
+// Which walls face a street closely enough to carry a shopfront.
+const NO_SHOPS = new Set(['house', 'detached', 'residential', 'apartments', 'terrace', 'garage', 'garages', 'shed', 'roof', 'outbuilding', 'church', 'temple', 'school', 'public', 'civic', 'industrial']);
+const CIVIC_USE = new Set(['library', 'place_of_worship', 'cinema', 'townhall', 'post_office', 'theatre', 'museum', 'fire_station', 'police']);
+const shopStreets = lines.filter((l) => STREET.has(l.kind) && !l.bridge);
+function shopfronts(ring, tags) {
+  if (NO_SHOPS.has(tags.building) || CIVIC_USE.has(tags.amenity) || tags.tourism === 'museum') return [];
+  const fronts = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 4.5) continue;
+    const ex = (bx - ax) / len, ez = (bz - az) / len;
+    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    // Footprints are wound so that outside is on the right of each edge.
+    const nx = ez, nz = -ex;
+    const faces = shopStreets.some((l) => {
+      const reach = l.width / 2 + 2.6 + 7;
+      for (let k = 0; k < l.pts.length - 1; k++) {
+        const [px, pz] = l.pts[k], [qx, qz] = l.pts[k + 1];
+        const { d, t } = distToSegment(mx, mz, px, pz, qx, qz);
+        if (d > reach) continue;
+        const sl = Math.hypot(qx - px, qz - pz) || 1;
+        const parallel = Math.abs((ex * (qx - px) + ez * (qz - pz)) / sl) > 0.82;
+        const toward = nx * (px + (qx - px) * t - mx) + nz * (pz + (qz - pz) * t - mz) > 0;
+        if (parallel && toward) return true;
+      }
+      return false;
+    });
+    if (faces) fronts.push(i);
+  }
+  return fronts;
+}
+
 const buildings = [];
 for (const way of ways) {
   if (!way.tags.building || !closed(way)) continue;
@@ -310,13 +373,39 @@ for (const way of ways) {
   const t = way.tags;
   buildings.push({
     id: way.id,
-    name: t.name,
+    // Only public landmarks keep their names. Shops and restaurants are left out: the game invents its own.
+    name: CIVIC_USE.has(t.amenity) || t.historic || t.tourism === 'museum' ? t.name : undefined,
+    fronts: shopfronts(ring, t),
+    cx: r2(cx),
+    cz: r2(cz),
     kind: t.building === 'yes' ? (t.shop || t.amenity || t.office ? 'commercial' : 'yes') : t.building,
     use: t.amenity || t.shop || t.tourism || t.historic || undefined,
     levels: levelsOf(way),
     base: r2(base),
     ring: ring.flatMap(([x, z]) => [r2(x), r2(z)]),
   });
+}
+
+// Mark the hand-built landmarks.
+for (const hero of region.heroes ?? []) {
+  const el = raw.elements.find((e) => e.tags?.name === hero.near);
+  const at = el && (el.type === 'node' ? nodes.get(el.id) : pointsOf(el)[0]);
+  if (!at) {
+    console.warn(`  hero "${hero.id}": nothing on the map is named "${hero.near}"`);
+    continue;
+  }
+  let best = null, bestD = 30;
+  for (const b of buildings) {
+    const d = Math.hypot(b.cx - at[0], b.cz - at[1]);
+    if (d < bestD) [best, bestD] = [b, d];
+  }
+  if (!best) {
+    console.warn(`  hero "${hero.id}": no building within 30 m of "${hero.near}"`);
+    continue;
+  }
+  best.hero = hero.id;
+  best.fronts = [];
+  console.log(`  hero "${hero.id}" -> building ${best.id}, ${bestD.toFixed(1)} m from "${hero.near}", ${best.ring.length / 2} corners`);
 }
 
 // ---------- Ground cover ----------
@@ -425,5 +514,6 @@ console.log(`${id}: ${Math.round(bounds.x1 - bounds.x0)} x ${Math.round(bounds.z
 console.log(`  ${buildings.length} buildings, ${roads.length} road pieces, ${water.length} open creek pieces, ${areas.length} areas, ${trees.length / 4} trees, ${pois.length} landmarks`);
 console.log('  roads:', tally);
 console.log('  bridges:', roads.filter((r) => r.bridge).map((r) => `${r.kind} ${r.name ?? ''} y=${r.pts[1]}..${r.pts[r.pts.length - 2]}`));
+console.log(`  ${buildings.filter((b) => b.fronts.length).length} buildings with shopfronts, ${buildings.reduce((a, b) => a + b.fronts.length, 0)} shopfront walls`);
 console.log('  landmarks:', pois.map((p) => p.name).join(', '));
 console.log(`  lowest ground ${Math.min(...height).toFixed(1)} m`);

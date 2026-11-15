@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { gouache, gouacheUniforms } from '../style/gouache';
 import { P } from '../style/palette';
-import { Batch } from './kit';
+import { GROUND_FLOOR, RECESS, UPPER_FLOOR, storefronts, type Kit } from './buildings';
+import { HEROES } from './heroes';
+import { Batch, signOptions } from './kit';
+import { shopAt } from './shops';
 import type { World } from './world';
 
 /** A region pack, as written by pipeline/build.mjs. Coordinates are game metres: x east, z south, y up. */
@@ -12,7 +15,7 @@ interface Pack {
   terrain: { x0: number; z0: number; cell: number; cols: number; rows: number; heights: number[] };
   roads: Road[];
   water: { width: number; pts: number[] }[];
-  buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[] }[];
+  buildings: { id: number; name?: string; kind: string; levels: number; base: number; ring: number[]; fronts: number[]; hero?: string }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
 }
@@ -140,6 +143,10 @@ export async function loadRegion(id: string): Promise<World> {
 
   const group = new THREE.Group();
   const paint = new Batch();
+  // Bridges are kept apart from everything else so they can be cut away when the cat walks under them.
+  const over = new Batch();
+  const kit: Kit = { paint, glow: new Batch(), glint: new Batch(), signs: new THREE.Group() };
+  signOptions.px = 56;
   const walls: Wall[] = [];
 
   // ---- Ground: one sheet, tinted by what covers it. ----
@@ -215,10 +222,13 @@ export async function loadRegion(id: string): Promise<World> {
 
   // ---- Roads, paths and the creek, as layered strips. ----
   const layers: Record<string, Tris> = {};
-  const layer = (name: string) => (layers[name] ??= new Tris());
+  const overLayers: Record<string, Tris> = {};
+  let onBridge = false;
+  const layer = (name: string) => ((onBridge ? overLayers : layers)[name] ??= new Tris());
   const bridges: { pts: number[]; half: number }[] = [];
 
   for (const r of pack.roads) {
+    onBridge = !!r.bridge && r.kind !== 'sidewalk';
     const n = r.pts.length / 3;
     const end = (n - 1) * 3;
     if (STREETS.has(r.kind)) {
@@ -251,6 +261,7 @@ export async function loadRegion(id: string): Promise<World> {
       if (r.bridge) bridge(r, r.width);
     }
   }
+  onBridge = false;
   for (const w of pack.water) ribbon(layer('water'), w.pts, w.width, 0);
 
   /** A bridge needs a deck you can stand on, sides you cannot walk through, and something holding it up. */
@@ -265,7 +276,7 @@ export async function loadRegion(id: string): Promise<World> {
         const dx = side[i + 3] - side[i], dz = side[i + 5] - side[i + 2];
         const len = Math.hypot(dx, dz);
         const y = (side[i + 1] + side[i + 4]) / 2;
-        paint.box(street ? P.stone : P.trunk, (side[i] + side[i + 3]) / 2, y + (rail - depth) / 2, (side[i + 2] + side[i + 5]) / 2, len + 0.05, rail + depth, street ? 0.4 : 0.16, Math.atan2(-dz, dx));
+        over.box(street ? P.stone : P.trunk, (side[i] + side[i + 3]) / 2, y + (rail - depth) / 2, (side[i + 2] + side[i + 5]) / 2, len + 0.05, rail + depth, street ? 0.4 : 0.16, Math.atan2(-dz, dx));
         walls.push({ ax: side[i], az: side[i + 2], bx: side[i + 3], bz: side[i + 5], y });
       }
     }
@@ -276,7 +287,7 @@ export async function loadRegion(id: string): Promise<World> {
         const i = Math.round((n - 1) * f) * 3;
         const top = r.pts[i + 1] - depth;
         const foot = terrainY(r.pts[i], r.pts[i + 2]);
-        if (top - foot > 1) paint.box(P.stone, r.pts[i], (top + foot) / 2, r.pts[i + 2], 1.4, top - foot, width * 0.8, Math.atan2(-(r.pts[i + 5] - r.pts[i + 2]), r.pts[i + 3] - r.pts[i]));
+        if (top - foot > 1) over.box(P.stone, r.pts[i], (top + foot) / 2, r.pts[i + 2], 1.4, top - foot, width * 0.8, Math.atan2(-(r.pts[i + 5] - r.pts[i + 2]), r.pts[i + 3] - r.pts[i]));
       }
     }
   }
@@ -285,14 +296,30 @@ export async function loadRegion(id: string): Promise<World> {
   for (const [name, tris] of Object.entries(layers)) {
     if (!tris.empty) paint.add(tris.geometry(), LAYER_COLOR[name], 0, 0, 0);
   }
+  for (const [name, tris] of Object.entries(overLayers)) {
+    if (!tris.empty) over.add(tris.geometry(), LAYER_COLOR[name], 0, 0, 0);
+  }
 
   // ---- Buildings: real footprints raised into painted blocks with rows of windows. ----
+  let shopCount = 0;
   for (const b of pack.buildings) {
     const n = b.ring.length / 2;
+    if (b.hero && HEROES[b.hero]) {
+      // A hand-built landmark stands on this footprint instead of a generic block.
+      HEROES[b.hero](kit, b.ring, b.base);
+      for (let i = 0; i < n; i++) {
+        walls.push({ ax: b.ring[i * 2], az: b.ring[i * 2 + 1], bx: b.ring[((i + 1) % n) * 2], bz: b.ring[((i + 1) % n) * 2 + 1], y: NaN });
+      }
+      continue;
+    }
     const house = HOUSES.has(b.kind);
-    const height = b.levels * 3.4 + (house ? 0.4 : 0.9);
+    const fronts = new Set(b.fronts);
+    // Buildings with shops use the shopfront kit's taller ground floor.
+    const height = fronts.size ? GROUND_FLOOR + (b.levels - 1) * UPPER_FLOOR + 0.5 : b.levels * 3.4 + (house ? 0.4 : 0.9);
     const top = b.base + height;
     const wall = WALLS[Math.floor(hash(b.id) * WALLS.length)];
+    const tone = hash(b.id + 3);
+    const style = { wall, trim: P.trim, shutters: tone < 0.2 ? P.inkGreen : tone < 0.35 ? P.navy : undefined };
     const sides = new Tris();
     const g = new THREE.BufferGeometry();
     const v: number[] = [];
@@ -300,23 +327,36 @@ export async function loadRegion(id: string): Promise<World> {
       const ax = b.ring[i * 2], az = b.ring[i * 2 + 1];
       const bx = b.ring[((i + 1) % n) * 2], bz = b.ring[((i + 1) % n) * 2 + 1];
       // Footprints are wound so that outside is on the right of each edge.
-      v.push(ax, b.base - 0.5, az, ax, top, az, bx, top, bz, ax, b.base - 0.5, az, bx, top, bz, bx, b.base - 0.5, bz);
       walls.push({ ax, az, bx, bz, y: NaN });
-
       const len = Math.hypot(bx - ax, bz - az);
+      if (fronts.has(i)) {
+        // Shopfront wall: solid above the ground floor, set back behind the shop windows below it.
+        const ox = (-(bz - az) / len) * RECESS, oz = ((bx - ax) / len) * RECESS;
+        const mid = b.base + GROUND_FLOOR;
+        v.push(ax, mid, az, ax, top, az, bx, top, bz, ax, mid, az, bx, top, bz, bx, mid, bz);
+        v.push(ax + ox, b.base - 0.5, az + oz, ax + ox, mid, az + oz, bx + ox, mid, bz + oz, ax + ox, b.base - 0.5, az + oz, bx + ox, mid, bz + oz, bx + ox, b.base - 0.5, bz + oz);
+        const frame = new THREE.Matrix4()
+          .makeBasis(new THREE.Vector3(-(bx - ax) / len, 0, -(bz - az) / len), new THREE.Vector3(0, 1, 0), new THREE.Vector3((bz - az) / len, 0, -(bx - ax) / len))
+          .setPosition(bx, b.base, bz);
+        const count = Math.max(1, Math.round(len / 6.5));
+        const shops = Array.from({ length: count }, (_, s) => shopAt(shopCount++, hash(b.id * 31 + i * 7 + s)));
+        storefronts(kit, style, shops, len, frame, b.levels, height);
+        continue;
+      }
+      v.push(ax, b.base - 0.5, az, ax, top, az, bx, top, bz, ax, b.base - 0.5, az, bx, top, bz, bx, b.base - 0.5, bz);
+
       const count = Math.floor((len - 1.2) / 2.9);
       if (count < 1) continue;
       // Wall space: u runs along the wall from b back to a, n points outward.
       const dx = (bx - ax) / len, dz = (bz - az) / len;
       paint.frame.makeBasis(new THREE.Vector3(-dx, 0, -dz), new THREE.Vector3(0, 1, 0), new THREE.Vector3(dz, 0, -dx)).setPosition(bx, b.base, bz);
       for (let l = 0; l < b.levels; l++) {
-        const shop = l === 0 && !house;
+        // Side and back walls: plain windows, lined up with the shopfront floors where there are any.
+        const floor = fronts.size ? (l === 0 ? 0.4 : GROUND_FLOOR + (l - 1) * UPPER_FLOOR) : l * 3.4;
         for (let k = 0; k < count; k++) {
           const u = ((k + 0.5) * len) / count;
-          const h = shop ? 2.3 : 1.6;
-          const w = shop ? Math.min(2.3, len / count - 0.6) : 1.05;
-          paint.box(shop ? P.backdropButter : P.glass, u, l * 3.4 + (shop ? 1.75 : 1.95), 0.02, w, h, 0.06);
-          paint.box(P.trim, u, l * 3.4 + (shop ? 0.55 : 1.1), 0.05, w + 0.3, 0.1, 0.14);
+          paint.box(P.glass, u, floor + 1.95, 0.02, 1.05, 1.6, 0.06);
+          paint.box(P.trim, u, floor + 1.1, 0.05, 1.35, 0.1, 0.14);
         }
       }
       paint.frame.identity();
@@ -347,12 +387,24 @@ export async function loadRegion(id: string): Promise<World> {
     }
   }
 
-  const mesh = paint.build(gouache({ vertexColors: true }));
-  if (mesh) {
+  for (const [batch, material] of [
+    [paint, gouache({ vertexColors: true })],
+    [over, gouache({ vertexColors: true, hole: true })],
+  ] as const) {
+    const mesh = batch.build(material);
+    if (!mesh) continue;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
+  const glow = kit.glow.build(gouache({ vertexColors: true, unlit: true }));
+  if (glow) group.add(glow);
+  const glint = kit.glint.build(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false }));
+  if (glint) {
+    glint.renderOrder = 1;
+    group.add(glint);
+  }
+  group.add(kit.signs);
 
   // The painting fades to paper just past the region's edge.
   const B = pack.bounds;
@@ -435,5 +487,18 @@ export async function loadRegion(id: string): Promise<World> {
       return groundY;
     },
     update() {},
+    covered(pos) {
+      // The camera looks down at an angle, so a deck hides the cat from a little way off to one side.
+      for (const b of bridges) {
+        for (let i = 0; i < b.pts.length - 3; i += 3) {
+          if (b.pts[i + 1] < pos.y + 1.5) continue;
+          const ax = b.pts[i], az = b.pts[i + 2], dx = b.pts[i + 3] - ax, dz = b.pts[i + 5] - az;
+          const len2 = dx * dx + dz * dz;
+          const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((pos.x - ax) * dx + (pos.z - az) * dz) / len2));
+          if (Math.hypot(pos.x - (ax + dx * t), pos.z - (az + dz * t)) < b.half + (b.pts[i + 1] - pos.y) * 1.6) return true;
+        }
+      }
+      return false;
+    },
   };
 }

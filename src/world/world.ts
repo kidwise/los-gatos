@@ -14,6 +14,8 @@ export interface World {
   /** Ground height under a point, for a walker currently at currentY (which picks bridge deck or below). */
   heightAt(x: number, z: number, currentY: number): number;
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
+  /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
+  covered(pos: THREE.Vector3): boolean;
 }
 
 export function cornerWorld(): World {
@@ -65,5 +67,6 @@ export function cornerWorld(): World {
     // Sidewalks and the plaza sit a curb's height above the street.
     heightAt: (x, z) => (Math.abs(x) < 4.5 || Math.abs(z) < 4.5 ? 0 : 0.15),
     update: (dt, cat, catSpeed) => people.update(dt, cat, catSpeed),
+    covered: () => false,
   };
 }

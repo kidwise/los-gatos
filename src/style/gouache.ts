@@ -11,6 +11,8 @@ export const gouacheUniforms = {
   uFadeCenter: { value: new THREE.Vector2(0, 0) },
   uFadeHalf: { value: new THREE.Vector2(0, 0) },
   uFade: { value: new THREE.Vector2(35, 45) },
+  // A round window cut through anything that roofs over the cat: screen position and radius in pixels.
+  uHole: { value: new THREE.Vector3(0, 0, 0) },
 };
 
 const NOISE = /* glsl */ `
@@ -31,6 +33,12 @@ const NOISE = /* glsl */ `
 
 const PAINT = /* glsl */ `
   {
+    #ifdef GOUACHE_HOLE
+      if (uHole.z > 0.5) {
+        float gHole = distance(gl_FragCoord.xy, uHole.xy) + (gNoise(vGWorld * 1.3) - 0.5) * uHole.z * 0.16;
+        if (gHole < uHole.z) discard;
+      }
+    #endif
     vec3 gBase = diffuseColor.rgb;
     // Pigment unevenness inside a fill.
     gBase *= 1.0 + (gNoise(vGNoise * 0.55) - 0.5) * 0.09;
@@ -60,6 +68,8 @@ export interface GouacheOptions {
   unlit?: boolean;
   /** Noise follows the object instead of the world, for things that move. */
   local?: boolean;
+  /** Can be cut away to show the cat underneath, for bridge decks. */
+  hole?: boolean;
 }
 
 export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
@@ -70,6 +80,7 @@ export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
   mat.defines = {
     ...(opts.unlit ? { GOUACHE_UNLIT: '' } : {}),
     ...(opts.local ? { GOUACHE_LOCAL: '' } : {}),
+    ...(opts.hole ? { GOUACHE_HOLE: '' } : {}),
   };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, gouacheUniforms);
@@ -97,10 +108,11 @@ export function gouache(opts: GouacheOptions = {}): THREE.MeshLambertMaterial {
         varying vec3 vGNoise;
         uniform vec3 uPaper, uLightTint, uHalfTint, uShadowTint;
         uniform vec2 uFade, uFadeCenter, uFadeHalf;
+        uniform vec3 uHole;
         ${NOISE}`,
       )
       .replace('#include <opaque_fragment>', `${PAINT}\n#include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => `gouache:${opts.unlit ? 'u' : ''}${opts.local ? 'l' : ''}`;
+  mat.customProgramCacheKey = () => `gouache:${opts.unlit ? 'u' : ''}${opts.local ? 'l' : ''}${opts.hole ? 'h' : ''}`;
   return mat;
 }

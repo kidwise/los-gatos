@@ -22,16 +22,20 @@ export interface Facade {
   shops: Shop[];
 }
 
-export interface Building {
+/** The colours a facade is painted in. */
+export interface FacadeStyle {
+  wall: number;
+  trim: number;
+  shutters?: number;
+}
+
+export interface Building extends FacadeStyle {
   x0: number;
   x1: number;
   z0: number;
   z1: number;
   floors: number;
-  wall: number;
-  trim: number;
   roof: 'parapet' | 'tile' | 'terrace';
-  shutters?: number;
   facades: Facade[];
 }
 
@@ -43,9 +47,9 @@ export interface Kit {
   signs: THREE.Group;
 }
 
-const GROUND_FLOOR = 4.2;
-const UPPER_FLOOR = 3.3;
-const RECESS = 0.55;
+export const GROUND_FLOOR = 4.2;
+export const UPPER_FLOOR = 3.3;
+export const RECESS = 0.55;
 const SHELF = 0.55;
 const OPENING_TOP = 3.0;
 
@@ -122,7 +126,7 @@ function display(k: Kit, kind: Display, u: number, w: number): void {
   }
 }
 
-function shopfront(k: Kit, b: Building, shop: Shop, index: number, u0: number, W: number, frame: THREE.Matrix4): void {
+function shopfront(k: Kit, b: FacadeStyle, shop: Shop, index: number, u0: number, W: number, frame: THREE.Matrix4): void {
   const p = k.paint;
   const PIER = 0.4;
   const DOOR = 1.5;
@@ -171,7 +175,7 @@ function shopfront(k: Kit, b: Building, shop: Shop, index: number, u0: number, W
   }
 }
 
-function upperWindows(k: Kit, b: Building, u0: number, W: number, base: number): void {
+function upperWindows(k: Kit, b: FacadeStyle, u0: number, W: number, base: number): void {
   const p = k.paint;
   const count = Math.max(1, Math.round(W / 2.7));
   for (let j = 0; j < count; j++) {
@@ -196,23 +200,32 @@ function upperWindows(k: Kit, b: Building, u0: number, W: number, base: number):
 }
 
 function facade(k: Kit, b: Building, f: Facade, height: number): void {
-  const p = k.paint;
   const length = f.side === '+z' ? b.x1 - b.x0 : b.z1 - b.z0;
   // Facade space: u runs left to right as seen from the street, v is up, n points out of the wall.
   const frame = new THREE.Matrix4();
   if (f.side === '+z') frame.makeTranslation(b.x0, 0, b.z1);
   else frame.makeRotationY(Math.PI / 2).setPosition(b.x1, 0, b.z1);
 
+  storefronts(k, b, f.shops, length, frame, b.floors, height);
+}
+
+/**
+ * A row of shopfronts with windows above, laid onto any wall.
+ * `frame` puts the wall's bottom-left corner (seen from the street) at the origin, with u along the
+ * wall, v up and n out toward the street. The wall behind must be set back by RECESS at ground level.
+ */
+export function storefronts(k: Kit, style: FacadeStyle, shops: Shop[], length: number, frame: THREE.Matrix4, floors: number, height: number): void {
+  const p = k.paint;
   for (const batch of [k.paint, k.glow, k.glint]) batch.frame.copy(frame);
 
-  const W = length / f.shops.length;
-  f.shops.forEach((shop, i) => {
-    shopfront(k, b, shop, i, i * W, W, frame);
-    for (let fl = 1; fl < b.floors; fl++) upperWindows(k, b, i * W, W, GROUND_FLOOR + (fl - 1) * UPPER_FLOOR);
+  const W = length / shops.length;
+  shops.forEach((shop, i) => {
+    shopfront(k, style, shop, i, i * W, W, frame);
+    for (let fl = 1; fl < floors; fl++) upperWindows(k, style, i * W, W, GROUND_FLOOR + (fl - 1) * UPPER_FLOOR);
   });
 
-  if (b.floors > 1) p.box(b.trim, length / 2, GROUND_FLOOR + 0.05, 0.05, length + 0.1, 0.14, 0.1);
-  p.box(b.trim, length / 2, height - 0.16, 0.11, length + 0.22, 0.3, 0.22);
+  if (floors > 1) p.box(style.trim, length / 2, GROUND_FLOOR + 0.05, 0.05, length + 0.1, 0.14, 0.1);
+  p.box(style.trim, length / 2, height - 0.16, 0.11, length + 0.22, 0.3, 0.22);
 
   for (const batch of [k.paint, k.glow, k.glint]) batch.frame.identity();
 }

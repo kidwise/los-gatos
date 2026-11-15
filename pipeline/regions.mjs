@@ -8,5 +8,8 @@ export const REGIONS = {
     // Real metres are multiplied by this. Downtown stays at true size so buildings keep human scale;
     // long, empty stretches of trail are where a smaller number belongs.
     scale: 1,
+    // Landmarks that get a hand-built model instead of a generic block. Each is matched to the
+    // building nearest a named map feature.
+    heroes: [{ id: 'mill-annex', near: 'Forbes Mill Museum' }],
   },
 };

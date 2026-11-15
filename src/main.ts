@@ -7,6 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Cat, CAT_SCALE, type DebugPose } from './cat/Cat';
 import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
+import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
 import { loadRegion } from './world/region';
@@ -156,6 +157,17 @@ async function start(): Promise<void> {
     });
   }
 
+  // When a bridge deck hides the cat, a round window opens in the deck around it.
+  let hole = 0;
+  const seen = new THREE.Vector3();
+  const openHole = (dt: number) => {
+    hole = THREE.MathUtils.lerp(hole, world.covered(pos) ? 1 : 0, 1 - Math.exp(-6 * dt));
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    seen.copy(pos).setY(pos.y + 0.4).project(rig.camera);
+    const perMetre = Math.min(size.x, size.y) / rig.span;
+    gouacheUniforms.uHole.value.set((seen.x * 0.5 + 0.5) * size.x, (seen.y * 0.5 + 0.5) * size.y, hole < 0.02 ? 0 : hole * Math.max(3.4 * perMetre, 70));
+  };
+
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((now) => {
     timer.update(now);
@@ -209,6 +221,7 @@ async function start(): Promise<void> {
 
     rig.update(dt, focus.copy(pos).setY(pos.y + 0.45));
     aimSun();
+    openHole(dt);
     composer.render();
   });
 }

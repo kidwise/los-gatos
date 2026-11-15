@@ -92,9 +92,9 @@ export class Batch {
     this.add(new THREE.ConeGeometry(r, h, seg).translate(0, h / 2, 0), color, x, y, z, o);
   }
 
-  /** Sloped canopy: back edge on the wall at z, bottom at y, projecting forward along +z. */
-  wedge(color: number, x: number, y: number, z: number, width: number, rise: number, projection: number): void {
-    this.add(UNIT_WEDGE, color, x, y, z, { sx: width, sy: rise, sz: projection });
+  /** Sloped canopy: back edge on the wall at z, bottom at y, projecting forward along +z (turned by ry). */
+  wedge(color: number, x: number, y: number, z: number, width: number, rise: number, projection: number, ry = 0): void {
+    this.add(UNIT_WEDGE, color, x, y, z, { sx: width, sy: rise, sz: projection, ry });
   }
 
   build(material: THREE.Material): THREE.Mesh | null {
@@ -120,11 +120,14 @@ export function seeded(seed: number): () => number {
 
 export type SignStyle = 'italic' | 'caps';
 
+/** Lettering resolution. Scenes with many signs lower this to save memory. */
+export const signOptions = { px: 96 };
+
 /** Hand-lettered shop sign as a transparent plane, sized to fit within maxWidth x height metres. */
 export function makeSign(text: string, style: SignStyle, ink: number, maxWidth: number, height: number): THREE.Mesh {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
-  const px = 96;
+  const px = signOptions.px;
   const font = style === 'italic' ? `italic 600 ${px}px "Playfair Display", Georgia, serif` : `500 ${px * 0.72}px "Playfair Display", Georgia, serif`;
   const label = style === 'caps' ? text.toUpperCase() : text;
   const spacing = style === 'caps' ? px * 0.16 : 0;
