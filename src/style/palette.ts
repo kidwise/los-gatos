@@ -1,0 +1,61 @@
+// One restrained palette for the whole corner. Every surface takes its colour from here.
+export const P = {
+  paper: 0xf3ecdf,
+
+  asphalt: 0x9c95a6,
+  roadPaint: 0xf4ecda,
+  sidewalk: 0xe9dac6,
+  paverJoint: 0xd8c5ae,
+  curb: 0xcfbda8,
+  plaza: 0xecd0b8,
+  lawn: 0xa2ba7c,
+  lawnDeep: 0x86a86c,
+  stone: 0xd9d0c4,
+  water: 0x7fb7b5,
+  steel: 0x8b8a93,
+
+  cream: 0xf2e5cd,
+  warmWhite: 0xf7f0e3,
+  blush: 0xedcab6,
+  sage: 0xcbd3b6,
+  butter: 0xf1dba3,
+  paleTerracotta: 0xe4b292,
+  slateBlue: 0xacbac7,
+
+  trim: 0xfbf6ea,
+  inkGreen: 0x2f4a3f,
+  deepGreen: 0x2f5d4c,
+  navy: 0x2f4466,
+  oxblood: 0x7a2f33,
+  persimmon: 0xe0683f,
+  ink: 0x2b2a30,
+  brass: 0xc9a24a,
+
+  terracotta: 0xc9704f,
+  roof: 0xdbcfc1,
+  roofUnit: 0xb9b3c2,
+  glass: 0x5d7885,
+  lampGlow: 0xfff3cf,
+
+  backdropButter: 0xf5dfab,
+  backdropBlush: 0xf2ccbc,
+  backdropSky: 0xd2e0e2,
+
+  leafA: 0x73a05e,
+  leafB: 0x8db36a,
+  leafC: 0x5a8552,
+  leafSun: 0xb9c86e,
+  cedarA: 0x4f8272,
+  cedarB: 0x3f6c62,
+  trunk: 0x8a6f5c,
+
+  pink: 0xe87f8f,
+  white: 0xf4f0e6,
+  yellow: 0xf2c14e,
+  lilac: 0xb48ad6,
+
+  catBody: 0x4b4556,
+  catWhite: 0xf5f0e7,
+  catEye: 0xd9cb4c,
+  catNose: 0xe59a9a,
+} as const;

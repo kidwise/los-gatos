@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#f3ecdf" />
+    <link rel="icon" href="data:," />
+    <title>Los Gatos: A Wandering</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f3ecdf; }
+      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+      .hud {
+        position: fixed; left: 0; right: 0; pointer-events: none; user-select: none;
+        font-family: "Playfair Display", Georgia, serif; color: #3a3542; text-align: center;
+        text-shadow: 0 0 6px #f3ecdf, 0 0 14px #f3ecdf;
+      }
+      #title { top: max(16px, env(safe-area-inset-top)); left: 20px; right: auto; text-align: left; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; opacity: 0.8; }
+      #title em { display: block; font-size: 22px; letter-spacing: 0.01em; text-transform: none; margin-top: 2px; }
+      #hint { bottom: max(22px, env(safe-area-inset-bottom)); font-style: italic; font-size: 16px; opacity: 0.7; transition: opacity 1.2s; }
+      #hint.gone { opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="title" class="hud">Style study<em>The Corner</em></div>
+    <div id="hint" class="hud">Hold to walk · tap to go · pinch to zoom</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
