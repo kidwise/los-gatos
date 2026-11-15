@@ -13,6 +13,7 @@ import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
 import { loadRegion } from './world/region';
+import { Ridge } from './world/ridge';
 import { cornerWorld, type Find, type Ride, type World } from './world/world';
 
 const WALK = 1.9;
@@ -48,7 +49,20 @@ async function start(): Promise<void> {
   scene.add(sun, sun.target);
 
   // `?region=main-street` loads a region built from the real map; without it, the style-study corner.
-  const regionId = params.get('region');
+  // Where the cat was when the game was last closed, so a visit picks up where the last one ended.
+  const PLACE_KEY = 'los-gatos:place';
+  let saved: { region: string; x: number; z: number } | null = null;
+  try {
+    if (params.has('reset')) localStorage.removeItem(PLACE_KEY);
+    saved = JSON.parse(localStorage.getItem(PLACE_KEY) ?? 'null');
+  } catch {
+    saved = null;
+  }
+  // `?region=` picks a region and `?corner` the style study; otherwise resume, or begin on Main Street.
+  const regionId = params.get('region') ?? (params.has('corner') ? null : saved?.region ?? 'main-street');
+  const placed = params.has('region') || params.has('x');
+  // The very first visit opens with the cat asleep under the plaza cedar.
+  const firstVisit = !placed && !saved && !!regionId && (params.has('reset') || Journal.fresh);
   const world: World = regionId ? await loadRegion(regionId, params.get('from')) : cornerWorld();
   scene.add(world.group);
   if (regionId) {
@@ -117,8 +131,9 @@ async function start(): Promise<void> {
   resize();
 
   // The cat's place in the world.
-  const pos = new THREE.Vector3(num('x', world.start.x), 0, num('z', world.start.z));
-  let heading = num('heading', world.start.heading);
+  const begin = firstVisit && world.home ? world.home : !placed && saved?.region === regionId ? { x: saved.x, z: saved.z, heading: world.start.heading } : world.start;
+  const pos = new THREE.Vector3(num('x', begin.x), 0, num('z', begin.z));
+  let heading = num('heading', begin.heading);
   let speed = 0;
   let stuck = 0;
   const dir = new THREE.Vector3();
@@ -201,7 +216,13 @@ async function start(): Promise<void> {
       canvas: renderer.domElement,
       heightAt: (x, z) => world.heightAt(x, z, 1000),
       placeName: (x, z) => world.placeName(x, z),
-      view: (id) => world.ghosts.find((g) => g.spot === id)?.view ?? null,
+      view: (id) => {
+        const ghost = world.ghosts.find((g) => g.spot === id);
+        if (ghost) return ghost.view;
+        // At a lookout the camera comes down low and turns south, to the mountains.
+        const spot = world.spots.find((s) => s.id === id);
+        return spot?.lookout ? { x: spot.x, y: world.heightAt(spot.x, spot.z, 1000) + 2, z: spot.z, span: 120, yaw: Math.PI - 0.22, pitch: 0.17 } : null;
+      },
       onSit: () => cat.sitNow(),
       onWear: (item, on) => cat.wear(item, on),
       onMeow: () => {
@@ -239,6 +260,48 @@ async function start(): Promise<void> {
     gouacheUniforms.uHole.value.set((seen.x * 0.5 + 0.5) * size.x, (seen.y * 0.5 + 0.5) * size.y, hole < 0.02 ? 0 : hole * Math.max(3.4 * perMetre, 70));
   };
 
+  // The mountains, which show at lookouts, and the dusk that falls at the end of the trail.
+  const ridge = new Ridge();
+  scene.add(ridge.group);
+  const DAY = { light: new THREE.Color(0xfff7e8), half: new THREE.Color(0xd9d4ea), shadow: new THREE.Color(0x968cbc) };
+  const DUSK = { light: new THREE.Color(0xffe0bd), half: new THREE.Color(0xe2b9c2), shadow: new THREE.Color(0x7a68a8) };
+  const endingId = world.spots.find((s) => s.ending)?.id ?? null;
+  let dusk = 0;
+  let endingIn = -1;
+  const endingCard = document.getElementById('ending') as HTMLDivElement;
+  (document.getElementById('ending-close') as HTMLButtonElement).onclick = () => endingCard.classList.remove('on');
+
+  // The opening: the town seen from above, the cat asleep, until the first touch.
+  const intro = document.getElementById('intro') as HTMLDivElement;
+  let opening = firstVisit;
+  if (opening) {
+    intro.classList.add('on');
+    rig.span = 46;
+    rig.snapTo(focus.copy(pos).setY(pos.y + 0.45));
+    document.getElementById('hint')!.classList.add('gone');
+    const wakeUp = () => {
+      opening = false;
+      intro.classList.remove('on');
+      rig.span = 8.5;
+      window.removeEventListener('pointerdown', wakeUp);
+      window.removeEventListener('keydown', wakeUp);
+    };
+    window.addEventListener('pointerdown', wakeUp);
+    window.addEventListener('keydown', wakeUp);
+  }
+
+  // Remember where the cat is, every few seconds and when the page is put away.
+  const remember = () => {
+    if (!regionId || riding || opening) return;
+    try {
+      localStorage.setItem(PLACE_KEY, JSON.stringify({ region: regionId, x: Math.round(pos.x * 10) / 10, z: Math.round(pos.z * 10) / 10 }));
+    } catch {
+      // Without storage the next visit simply starts from the beginning.
+    }
+  };
+  setInterval(remember, 4000);
+  window.addEventListener('pagehide', remember);
+
   // Rides: near a train car or the carousel, a button offers a seat. While riding, the ride moves the cat.
   const rideButton = document.getElementById('ride-btn') as HTMLButtonElement;
   let riding: Ride | null = null;
@@ -267,7 +330,8 @@ async function start(): Promise<void> {
     controls.update();
 
     let want = 0;
-    const held = journal?.active || !!riding;
+    const held = journal?.active || !!riding || opening;
+    if (opening) cat.sitNow();
     let moveDir: THREE.Vector3 | null = held ? null : controls.keyDirection(dir);
     if (held) controls.target = null;
     if (moveDir) {
@@ -340,7 +404,27 @@ async function start(): Promise<void> {
     }
     // A ghost of what once stood here draws itself during its story moment.
     for (const g of world.ghosts) g.update(dt, journal?.momentId === g.spot || params.get('ghost') === g.spot);
-    rig.update(dt, journal?.cameraFocus ?? focus.copy(pos).setY(pos.y + 0.45));
+    const lookAt = journal?.cameraFocus ?? focus.copy(pos).setY(pos.y + 0.45);
+    rig.update(dt, lookAt);
+
+    // Dusk falls while the cat sits at the end of the trail, and lifts when it walks on.
+    const atEnd = !!endingId && journal?.momentId === endingId;
+    dusk += ((atEnd ? 1 : 0) - dusk) * (1 - Math.exp(-0.9 * dt));
+    gouacheUniforms.uLightTint.value.copy(DAY.light).lerp(DUSK.light, dusk);
+    gouacheUniforms.uHalfTint.value.copy(DAY.half).lerp(DUSK.half, dusk);
+    gouacheUniforms.uShadowTint.value.copy(DAY.shadow).lerp(DUSK.shadow, dusk);
+    ridge.update(rig, lookAt, dusk);
+    // A few seconds into that last view, a quiet closing card.
+    if (atEnd && endingIn < 0) endingIn = 5;
+    if (!atEnd) {
+      endingIn = -1;
+      endingCard.classList.remove('on');
+    } else if (endingIn > 0 && (endingIn -= dt) <= 0) {
+      endingIn = 0;
+      const s = journal!.summary;
+      document.getElementById('ending-tally')!.textContent = `${s.found} of ${s.total} things found · ${s.pages} ${s.pages === 1 ? 'sketch' : 'sketches'} drawn`;
+      endingCard.classList.add('on');
+    }
     // The pin grows with the view so it stays the same size on screen.
     const far = THREE.MathUtils.smoothstep(rig.span, 30, 50);
     pin.visible = far > 0.01 && !journal?.cameraFocus;

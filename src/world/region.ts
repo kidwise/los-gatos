@@ -748,6 +748,8 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   return {
     group,
     title: pack.title,
+    // The wander begins under the plaza's cedar.
+    home: pack.props?.cedar ? { x: pack.props.cedar[0] + 2.4, z: pack.props.cedar[2] + 2.6, heading: 0.8 } : undefined,
     exits: (pack.exits ?? []).map((e) => ({ ...e, edge: e.side === 'north' ? B.z0 + 3 : B.z1 - 3 })),
     start,
     maxSpan: Math.max(420, (B.z1 - B.z0) * 0.6),

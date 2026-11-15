@@ -19,6 +19,8 @@ export interface View {
   z: number;
   span: number;
   yaw: number | null;
+  /** A lower camera angle, for lookouts. */
+  pitch?: number;
 }
 
 interface Page {
@@ -81,7 +83,7 @@ export class Journal {
 
   // Where the camera should look instead of at the cat, while framing or during a story moment.
   private readonly focus = new THREE.Vector3();
-  private moment: { id: string; t: number; settled: boolean } | null = null;
+  private moment: { id: string; t: number; settled: boolean; long: boolean } | null = null;
   private spanBefore = 10;
   private origin = new THREE.Vector3();
 
@@ -157,6 +159,21 @@ export class Journal {
     return this.moment?.id ?? null;
   }
 
+  /** How much has been found and drawn so far. */
+  get summary(): { found: number; total: number; pages: number } {
+    const all = this.all();
+    return { found: all.filter((e) => this.state.found.includes(e.find.id)).length, total: all.length, pages: this.state.pages.length };
+  }
+
+  /** True if nothing has ever been saved: a first visit. */
+  static get fresh(): boolean {
+    try {
+      return localStorage.getItem('los-gatos:journal') === null;
+    } catch {
+      return true;
+    }
+  }
+
   /** For automated checks. */
   debug(action: 'camera' | 'draw' | 'meow'): void {
     if (action === 'camera') this.enterFinder();
@@ -199,7 +216,7 @@ export class Journal {
       this.moment.t += dt;
       // The cat stops to look; the moment lasts until the player sets off again.
       if (!moving) this.moment.settled = true;
-      if (this.moment.t > MOMENT_SECONDS || (moving && this.moment.settled && this.moment.t > 1.2)) this.endMoment();
+      if (this.moment.t > (this.moment.long ? 30 : MOMENT_SECONDS) || (moving && this.moment.settled && this.moment.t > 1.2)) this.endMoment();
     }
 
     if (this.holdUntil && this.time > this.holdUntil) {
@@ -245,21 +262,20 @@ export class Journal {
       this.save();
       this.refresh();
     }
-    if (f.kind === 'story') {
-      // History is worth seeing again: the moment replays whenever the cat comes back.
-      this.say(`<b>${f.title}</b><span>${f.blurb}</span>`);
-      const view = this.o.view(f.id);
-      if (view) {
-        this.moment = { id: f.id, t: 0, settled: false };
-        this.o.controls.target = null;
-        this.focus.set(view.x, view.y, view.z);
-        this.spanBefore = this.o.rig.span;
-        this.o.rig.span = Math.max(this.o.rig.span, view.span);
-        this.o.rig.turnTo(view.yaw);
-        this.o.onSit();
-      }
-    } else if (first) {
-      this.say(`<b>${f.kind === 'skill' ? 'A new trick: Meow' : `Found: ${f.title.toLowerCase()}`}</b><span>${f.blurb}</span>`);
+    if (f.kind === 'story') this.say(`<b>${f.title}</b><span>${f.blurb}</span>`);
+    else if (first) this.say(`<b>${f.kind === 'skill' ? 'A new trick: Meow' : `Found: ${f.title.toLowerCase()}`}</b><span>${f.blurb}</span>`);
+    // A place with something to show turns the camera to it. Stories do so on every visit;
+    // other finds only the first time.
+    const view = f.kind === 'story' || first ? this.o.view(f.id) : null;
+    if (view) {
+      this.moment = { id: f.id, t: 0, settled: false, long: view.pitch !== undefined };
+      this.o.controls.target = null;
+      this.focus.set(view.x, view.y, view.z);
+      this.spanBefore = this.o.rig.span;
+      this.o.rig.span = Math.max(this.o.rig.span, view.span);
+      this.o.rig.turnTo(view.yaw);
+      this.o.rig.tiltTo(view.pitch ?? null);
+      this.o.onSit();
     }
   }
 
@@ -267,6 +283,7 @@ export class Journal {
     this.moment = null;
     this.o.rig.span = this.spanBefore;
     this.o.rig.turnTo(null);
+    this.o.rig.tiltTo(null);
   }
 
   private meow(): void {

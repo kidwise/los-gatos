@@ -818,7 +818,7 @@ if (existsSync(overlayPath)) {
       console.log(`  spot "${s.id}" was inside a building; moved ${bestD.toFixed(0)} m to clear ground`);
       at = best;
     }
-    spots.push({ id: s.id, kind: s.kind, item: s.item, title: s.title, blurb: s.blurb, x: r2(at[0]), z: r2(at[1]) });
+    spots.push({ id: s.id, kind: s.kind, item: s.item, title: s.title, blurb: s.blurb, lookout: s.lookout, ending: s.ending, x: r2(at[0]), z: r2(at[1]) });
   }
 }
 

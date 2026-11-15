@@ -16,8 +16,12 @@ export class CameraRig {
   private target = new THREE.Vector3();
   private aspect = 1;
   /** Compass direction the camera looks from. It only changes to show something off at a sketch spot. */
-  private yaw = YAW;
+  yaw = YAW;
   private yawGoal = YAW;
+  /** How steeply the camera looks down. It only lowers at a lookout, to show the mountains. */
+  pitch = PITCH;
+  private pitchGoal = PITCH;
+  private lowest = PITCH;
   private readonly offset = new THREE.Vector3();
 
   resize(aspect: number): void {
@@ -42,7 +46,19 @@ export class CameraRig {
     this.yawGoal = yaw ?? YAW;
   }
 
+  /** Lower the camera toward the horizon, or return it to its usual angle. */
+  tiltTo(pitch: number | null): void {
+    this.pitchGoal = pitch ?? PITCH;
+    if (pitch !== null) this.lowest = pitch;
+  }
+
+  /** How far the camera has lowered toward its lookout angle, from 0 to 1. */
+  get lowered(): number {
+    return this.lowest < PITCH ? THREE.MathUtils.clamp((PITCH - this.pitch) / (PITCH - this.lowest), 0, 1) : 0;
+  }
+
   update(dt: number, focus: THREE.Vector3): void {
+    this.pitch += (this.pitchGoal - this.pitch) * (1 - Math.exp(-2.2 * dt));
     if (Math.abs(this.span - this.shown) > 0.001) {
       this.shown += (this.span - this.shown) * (1 - Math.exp(-9 * dt));
       this.applySpan();
@@ -60,7 +76,7 @@ export class CameraRig {
   }
 
   private place(): void {
-    this.offset.set(Math.sin(this.yaw) * Math.cos(PITCH), Math.sin(PITCH), Math.cos(this.yaw) * Math.cos(PITCH)).multiplyScalar(DISTANCE);
+    this.offset.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).multiplyScalar(DISTANCE);
     this.camera.position.copy(this.target).add(this.offset);
     this.camera.lookAt(this.target);
   }

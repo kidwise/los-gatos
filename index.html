@@ -107,6 +107,25 @@
       #ride-btn.on { display: block; }
       body.framing #ride-btn { display: none; }
       body.framing #exit-btn { display: none; }
+      #intro { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s; font-family: "Playfair Display", Georgia, serif; color: #3a3542; text-align: center; }
+      #intro.on { opacity: 1; }
+      #intro .intro-title { position: absolute; left: 0; right: 0; top: 16%; text-shadow: 0 0 10px #f3ecdf, 0 0 26px #f3ecdf, 0 0 40px #f3ecdf; }
+      #intro .intro-title span { display: block; font-size: 15px; letter-spacing: 0.42em; text-transform: uppercase; }
+      #intro .intro-title em { display: block; font-size: min(64px, 13vw); margin-top: 4px; }
+      #intro .intro-go { position: absolute; left: 0; right: 0; bottom: 14%; font-style: italic; font-size: 18px; text-shadow: 0 0 8px #f3ecdf, 0 0 18px #f3ecdf; animation: breathe 2.6s ease-in-out infinite; }
+      @keyframes breathe { 50% { opacity: 0.45; } }
+      body:has(#intro.on) #title, body:has(#intro.on) #book-btn, body:has(#intro.on) #cam-btn, body:has(#intro.on) #sound-btn, body:has(#intro.on) #ride-btn { visibility: hidden; }
+      #ending {
+        position: fixed; left: 50%; bottom: max(26px, env(safe-area-inset-bottom)); transform: translate(-50%, 20px); width: min(88vw, 440px); box-sizing: border-box;
+        font-family: "Playfair Display", Georgia, serif; color: #3a3542; background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 16px;
+        padding: 18px 22px; text-align: center; opacity: 0; pointer-events: none; transition: opacity 1.2s, transform 1.2s;
+      }
+      #ending.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+      #ending em { display: block; font-size: 24px; }
+      #ending p { margin: 8px 0 0; font-size: 15px; font-style: italic; }
+      #ending #ending-tally { font-style: normal; font-size: 13px; letter-spacing: 0.06em; opacity: 0.75; }
+      #ending button { margin-top: 14px; font: inherit; font-size: 15px; color: #3a3542; background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 999px; padding: 8px 20px; }
+      body:has(#ending.on) #cam-btn, body:has(#ending.on) #meow-btn, body:has(#ending.on) #hint, body:has(#ending.on) #ride-btn { visibility: hidden; }
       #sound-btn {
         position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px; font-family: "Playfair Display", Georgia, serif; color: #3a3542;
         background: #fbf6ea; border: 1.5px solid #3a3542; border-radius: 999px; padding: 8px 14px; font-size: 13px; box-shadow: 0 2px 0 rgba(58, 53, 66, 0.25);
@@ -123,6 +142,16 @@
     <button id="sound-btn"></button>
     <button id="exit-btn"></button>
     <button id="ride-btn"></button>
+    <div id="intro">
+      <div class="intro-title"><span>Los Gatos</span><em>A Wandering</em></div>
+      <div class="intro-go">Touch anywhere to wake up</div>
+    </div>
+    <div id="ending">
+      <em>The end of the trail, for today</em>
+      <p>From the plaza cedar to the dam, with the mountains behind it all.</p>
+      <p id="ending-tally"></p>
+      <button id="ending-close">Keep wandering</button>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

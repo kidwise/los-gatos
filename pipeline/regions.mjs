@@ -22,7 +22,7 @@ export const REGIONS = {
   vasona: {
     title: 'Oak Meadow & Vasona',
     // The creek corridor north of downtown: the trail, Oak Meadow Park and Vasona Lake.
-    bbox: [37.2258, -121.9768, 37.2460, -121.9630],
+    bbox: [37.2258, -121.9768, 37.2500, -121.9630],
     // This region is about the parks, so the streets round them are kept plain and light.
     shopfronts: false,
     parkedCars: false,

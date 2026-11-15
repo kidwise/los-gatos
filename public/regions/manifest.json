@@ -73,6 +73,12 @@
         "kind": "story",
         "title": "Vasona Lake",
         "blurb": "Pedal boats, kayaks and little sailboats go out from here in the warm months."
+      },
+      {
+        "id": "dam",
+        "kind": "story",
+        "title": "Vasona Dam",
+        "blurb": "The north end of the lake. Look back: the whole town lies between here and the mountains."
       }
     ]
   }

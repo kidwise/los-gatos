@@ -12,6 +12,8 @@ export interface World {
   /** Edges that lead on to a neighbouring region: which one, and the z of the edge. */
   exits: { to: string; side: 'north' | 'south'; edge: number }[];
   start: { x: number; z: number; heading: number };
+  /** Where the very first visit begins, if this region is where the story starts. */
+  home?: { x: number; z: number; heading: number };
   /** Widest the camera may zoom out, in metres across the short side of the screen. */
   maxSpan: number;
   /** Pushes a walker of the given radius out of anything solid. */
@@ -57,6 +59,10 @@ export interface Find {
   item?: string;
   title: string;
   blurb: string;
+  /** The camera lowers here to look south to the mountains. */
+  lookout?: boolean;
+  /** Reaching this is the closing moment of the wander. */
+  ending?: boolean;
   x: number;
   z: number;
 }
