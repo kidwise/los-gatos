@@ -78,6 +78,8 @@ async function start(): Promise<void> {
 
   const cat = new Cat();
   scene.add(cat.root);
+  // `?wear=beret,glasses` dresses the cat, for looking at the wardrobe.
+  for (const item of (params.get('wear') ?? '').split(',')) cat.wear(item, true);
   if (params.has('pose')) {
     cat.debugPose = params.get('pose') as DebugPose;
     cat.debugPhase = num('phase', 0.1);
@@ -477,7 +479,7 @@ async function start(): Promise<void> {
     }
     if (!riding) place(0.35);
     // The legs only go so fast; beyond that the cat simply covers more ground.
-    cat.update(dt, moveDir ? Math.min(speed, 7) : 0);
+    cat.update(dt, moveDir ? speed : 0);
     world.update(dt, pos, moveDir ? speed : 0);
     if (riding) {
       // The ride carries the cat, sitting, wherever it goes.

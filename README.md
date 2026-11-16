@@ -69,6 +69,8 @@ Add these to the local address:
 | `?corner` | Open the original style-study street corner |
 | `?x=…&z=…&span=…` | Start at a map position, with a given zoom |
 | `?quality=0.6` | Fix the picture sharpness instead of adapting it |
+| `?pose=walk&phase=0.25` | Hold the cat in one frame of a pose: stand, walk, trot, gallop, sit, loaf or groom |
+| `?wear=beret,glasses` | Dress the cat |
 
 ## Testing
 
@@ -99,6 +101,7 @@ Other checks:
 | `npm run build` | Fails on any type error |
 | `npm run perf` | Reports frame rate and drawing load for six views |
 | `node scripts/shot.mjs "<address ending>" <output.png> [width] [height]` | Saves a screenshot of the running game |
+| `node scripts/cat-sheet.mjs <output.png> [poses…]` | Saves a contact sheet of the cat's poses and gaits, frame by frame |
 
 ## How it is built
 
