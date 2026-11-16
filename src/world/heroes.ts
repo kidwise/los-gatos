@@ -530,6 +530,14 @@ const carousel: HeroBuilder = (k, ring, base) => {
       h.ball(coat === 0x9a6a4a ? 0x3d2c25 : 0xd9c08a, 0.5, 0.5, 0, 0.1, 0.24, 0.07);
       h.ball(coat === 0x9a6a4a ? 0x3d2c25 : 0xd9c08a, -0.72, 0.05, 0, 0.07, 0.26, 0.07);
       for (const s of [-0.4, 0.4]) h.cyl(coat, s, -0.42, 0, 0.06, 0.05, 0.6, 6);
+      // Children ride some of the horses. The first horse of the outer ring is kept for the cat.
+      if ((i + ringIndex) % 3 === 1) {
+        const shirt = SADDLES[(i * 2 + 1) % 6];
+        h.cyl(shirt, -0.05, 0.62, 0, 0.11, 0.14, 0.44, 7);
+        h.ball([0xf0cdb0, 0xdca883, 0xb9825e][i % 3], -0.03, 0.96, 0, 0.11, 0.12, 0.11);
+        h.ball([P.ink, 0x5b4336, 0xd9b96e][(i + 1) % 3], -0.06, 1.01, 0, 0.115, 0.1, 0.12);
+        for (const sz of [-0.2, 0.2]) h.cyl(P.navy, 0.02, 0.36, sz, 0.05, 0.045, 0.34, 5);
+      }
       const mesh = h.build(paint)!;
       mesh.castShadow = true;
       const group = new THREE.Group();

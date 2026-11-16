@@ -119,6 +119,8 @@ interface Person {
   greet: number;
   greetTime: number;
   cooldown: number;
+  /** A sideways step, in metres, being taken to pass someone. */
+  dodge: number;
   /** Seconds left of having been called over by a meow. */
   called: number;
   seed: number;
@@ -222,6 +224,7 @@ export class People {
   private box = new Shape(new THREE.BoxGeometry(1, 1, 1));
   private shapes = [this.flare, this.taper, this.tube, this.ball, this.box];
   private folk: Person[] = [];
+  private near: Person[] = [];
   private stepClock = 0;
   private time = 0;
   private ways: { pts: number[]; cum: number[] }[];
@@ -263,7 +266,7 @@ export class People {
         x: 0, y: 0.15, z: 0, heading: 0,
         line: null, cum: [], seg: 0, way: -1, leader: null, lag: 0, dist: 0, speed: 0, side: 0,
         phase: rand(), shownPhase: 0,
-        greet: 0, greetTime: 0, cooldown: 0, called: 0,
+        greet: 0, greetTime: 0, cooldown: 0, called: 0, dodge: 0,
         seed: rand() * 100,
       };
     };
@@ -344,6 +347,7 @@ export class People {
     const tick = this.stepClock >= 1 / STEP_RATE;
     if (tick) this.stepClock = 0;
 
+    this.makeWay(dt);
     for (const p of this.folk) {
       if (p.mode === 'walk' && p.line) this.walk(p, dt, cat, catSpeed);
       if (tick) p.shownPhase = p.phase;
@@ -438,8 +442,9 @@ export class People {
     const t = Math.min(1, (p.dist - p.cum[p.seg]) / span);
     const dx = (line[a + 3] - line[a]) / span;
     const dz = (line[a + 5] - line[a + 2]) / span;
-    const tx = line[a] + (line[a + 3] - line[a]) * t - dz * p.side;
-    const tz = line[a + 2] + (line[a + 5] - line[a + 2]) * t + dx * p.side;
+    const side = p.side + p.dodge;
+    const tx = line[a] + (line[a + 3] - line[a]) * t - dz * side;
+    const tz = line[a + 2] + (line[a + 5] - line[a + 2]) * t + dx * side;
     const ty = this.heightAt ? this.heightAt(tx, tz) : line[a + 1] + (line[a + 4] - line[a + 1]) * t;
     const ease = 1 - Math.exp(-8 * dt);
     const jumped = Math.hypot(tx - p.x, tz - p.z) > 5;
@@ -450,6 +455,32 @@ export class People {
     const goal = p.greet > 0.5 ? Math.atan2(cat.x - p.x, cat.z - p.z) : Math.atan2(dx, dz);
     const diff = Math.atan2(Math.sin(goal - p.heading), Math.cos(goal - p.heading));
     p.heading = jumped ? goal : p.heading + diff * (1 - Math.exp(-7 * dt));
+  }
+
+  /** Walkers near each other step aside to pass, each keeping to their own right. */
+  private makeWay(dt: number): void {
+    const near = this.near;
+    near.length = 0;
+    const reach = Math.min(this.drawRadius, 90);
+    for (const p of this.folk) {
+      if (p.mode === 'walk' && Math.abs(p.x - this.catX) < reach && Math.abs(p.z - this.catZ) < reach) near.push(p);
+      else p.dodge = 0;
+    }
+    for (const p of near) {
+      let want = 0;
+      const rightX = -Math.cos(p.heading), rightZ = Math.sin(p.heading);
+      for (const q of near) {
+        if (q === p || q === p.leader || p === q.leader || (p.leader && p.leader === q.leader)) continue;
+        const dx = p.x - q.x, dz = p.z - q.z;
+        if (Math.abs(dx) > 1.5 || Math.abs(dz) > 1.5 || Math.abs(p.y - q.y) > 1) continue;
+        const d = Math.hypot(dx, dz);
+        if (d > 1.5) continue;
+        // Step away from the other person; if they are dead ahead, step to the right.
+        const side = dx * rightX + dz * rightZ;
+        want += (side >= -0.05 ? 1 : -1) * 0.75 * (1 - d / 1.5);
+      }
+      p.dodge += (Math.max(-0.9, Math.min(0.9, want)) - p.dodge) * (1 - Math.exp(-5 * dt));
+    }
   }
 
   private draw(): void {
