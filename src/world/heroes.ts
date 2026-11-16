@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { P } from '../style/palette';
 import { gouache } from '../style/gouache';
 import type { Kit } from './buildings';
-import { Batch, makeSign, seeded, type SignStyle } from './kit';
+import { Batch, makeSign, seeded } from './kit';
 
 /**
  * Hand-built landmarks. Each takes the real footprint from the map and stands a custom model on it,
@@ -10,7 +10,6 @@ import { Batch, makeSign, seeded, type SignStyle } from './kit';
  */
 export type HeroBuilder = (k: Kit, ring: number[], base: number, face?: number) => void;
 
-const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 
 /** The tightest rectangle round a footprint: its centre, half-sizes (long side first) and turn. */
 export function fitRectangle(ring: number[]): { cx: number; cz: number; halfLong: number; halfShort: number; angle: number } {
@@ -44,94 +43,80 @@ export function fitRectangle(ring: number[]): { cx: number; cz: number; halfLong
 }
 
 /**
- * The Forbes Mill annex: the 1880 stone store-room that is all that is left of the flour mill.
- * Stylized from general knowledge of the building (two-storey rough stone with a pitched roof),
- * not from reference photographs, so details such as window count are approximate.
+ * The Forbes Mill annex, after a photograph of the building: two storeys of dark blue-grey
+ * rubble stone flecked with tan, tall narrow windows with pale lintels and iron grilles, a
+ * nearly flat roof on exposed rafters, a central door under a signboard, and an old wagon outside.
  */
-const millAnnex: HeroBuilder = (k, ring, base) => {
+const millAnnex: HeroBuilder = (k, ring, base, face) => {
   const p = k.paint;
-  const { cx, cz, halfLong: hx, halfShort: hz, angle } = fitRectangle(ring);
+  const { w, d, frame } = frontOn(k, ring, base, face);
   const rand = seeded(1880);
-  const STONE = 0xd9c8a8;
-  const STONES = [0xcbb792, 0xe3d5b8, 0xc2ab88, 0xd2c09d];
-  const SHINGLE = 0x7c6e6c;
+  const STONE = 0x6c7484;
+  const STONES = [0x5d6676, 0x7b8494, 0x8b919c, 0x565d6b, 0x7f8798, 0xb7a482, 0xa5957a];
+  const LINTEL = 0xe6dab6;
+  const IRON = 0x34373f;
   const WOOD = 0x6b4a3a;
-  const H = 6.6;
-  const RISE = 2.4;
+  const H = 7.4;
 
-  // Local space: x along the long side, z across, y up.
-  const c = Math.cos(angle), s = Math.sin(angle);
-  const frame = new THREE.Matrix4().makeBasis(new THREE.Vector3(c, 0, s), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-s, 0, c)).setPosition(cx, base, cz);
-  for (const b of [k.paint, k.glow]) b.frame.copy(frame);
-
-  // Stone body with a low plinth, and gable ends in the same stone.
-  p.box(STONE, 0, H / 2 - 0.25, 0, hx * 2, H + 0.5, hz * 2);
-  p.box(0xbfae90, 0, 0.25, 0, hx * 2 + 0.16, 0.5, hz * 2 + 0.16);
-  p.wedge(STONE, 0, H, 0, hx * 2, RISE, hz);
-  p.wedge(STONE, 0, H, 0, hx * 2, RISE, hz, Math.PI);
-
-  // Rough masonry: individual stones standing slightly proud in three or four tones.
-  const stones = (count: number, along: number, place: (u: number, v: number, w: number, h: number) => void) => {
+  p.box(STONE, 0, H / 2 - 0.25, 0, w * 2, H + 0.5, d * 2);
+  // Rubble masonry: many stones of uneven size, a few of them tan, standing a little proud.
+  const stones = (count: number, half: number, place: (u: number, v: number, sw: number, sh: number, c: number) => void) => {
     for (let i = 0; i < count; i++) {
-      const w = 0.45 + rand() * 0.5;
-      const h = 0.26 + rand() * 0.16;
-      place((rand() * 2 - 1) * (along - w / 2 - 0.1), 0.6 + rand() * (H - 1.0), w, h);
+      const sw = 0.4 + rand() * 0.6, sh = 0.24 + rand() * 0.2;
+      place((rand() * 2 - 1) * (half - sw / 2 - 0.05), 0.25 + rand() * (H - 0.55), sw, sh, STONES[Math.floor(rand() * STONES.length)]);
     }
   };
   for (const side of [-1, 1]) {
-    stones(46, hx, (u, v, w, h) => p.box(STONES[Math.floor(rand() * 4)], u, v, side * (hz + 0.012), w, h, 0.03));
-    stones(22, hz, (u, v, w, h) => p.box(STONES[Math.floor(rand() * 4)], side * (hx + 0.012), v, u, 0.03, h, w));
+    stones(Math.round(w * 22), w, (u, v, sw, sh, c) => p.box(c, u, v, side * (d + 0.012), sw, sh, 0.03));
+    stones(Math.round(d * 22), d, (u, v, sw, sh, c) => p.box(c, side * (w + 0.012), v, u, 0.03, sh, sw));
   }
 
-  // Pitched shingle roof: two slabs meeting at the ridge, with a little overhang.
-  const slope = Math.atan2(RISE, hz);
-  const run = Math.hypot(RISE, hz) + 0.45;
-  for (const side of [-1, 1]) {
-    p.add(UNIT_BOX, SHINGLE, 0, H + RISE / 2 - 0.05, side * (hz / 2 + 0.12), { sx: hx * 2 + 0.7, sy: 0.16, sz: run, rx: side * slope });
-    // Courses of shingles as thin darker lines.
-    for (let i = 1; i < 5; i++) {
-      const f = i / 5;
-      p.add(UNIT_BOX, 0x6c5f5e, 0, H + RISE * (1 - f) + 0.06, side * hz * f * 1.04, { sx: hx * 2 + 0.72, sy: 0.03, sz: 0.07, rx: side * slope });
-    }
-  }
-  p.box(SHINGLE, 0, H + RISE + 0.04, 0, hx * 2 + 0.7, 0.14, 0.3);
+  // A low roof, tipped slightly to the back, on rafters whose ends show under the eaves.
+  p.add(new THREE.BoxGeometry(1, 1, 1), 0x8f8a86, 0, H + 0.2, 0, { sx: w * 2 + 0.9, sy: 0.16, sz: d * 2 + 0.9, rx: -0.035 });
+  for (let x = -w + 0.3; x <= w - 0.2; x += 0.9) p.box(0xd9cdb0, x, H + 0.02, d + 0.3, 0.12, 0.16, 0.5);
 
-  // Small deep-set windows with stone lintels and wooden shutters, on both floors.
-  const windowAt = (u: number, v: number, side: number, onEnd: boolean) => {
-    const put = (color: number, du: number, dv: number, w: number, h: number, proud: number, batch = p) => {
-      if (onEnd) batch.box(color, side * (hx + proud), v + dv, u + du, 0.06, h, w);
-      else batch.box(color, u + du, v + dv, side * (hz + proud), w, h, 0.06);
-    };
-    put(P.glass, 0, 0, 0.8, 1.3, 0.02);
-    put(0xeadfc6, 0, 0.75, 1.1, 0.2, 0.04);
-    put(0xeadfc6, 0, -0.72, 1.05, 0.12, 0.05);
-    put(WOOD, -0.6, 0, 0.36, 1.3, 0.035);
-    put(WOOD, 0.6, 0, 0.36, 1.3, 0.035);
+  // Tall, narrow windows with pale stone surrounds and iron grilles.
+  const win = (x: number, y: number, h: number) => {
+    p.box(LINTEL, x, y, d + 0.03, 1.15, h + 0.3, 0.06);
+    p.box(IRON, x, y, d + 0.05, 0.85, h, 0.06);
+    for (const dx of [-0.21, 0, 0.21]) p.box(0x55585f, x + dx, y, d + 0.09, 0.03, h, 0.02);
+    for (let dy = -h / 2 + 0.3; dy < h / 2; dy += 0.34) p.box(0x55585f, x, y + dy, d + 0.09, 0.85, 0.03, 0.02);
+    p.box(LINTEL, x, y + h / 2 + 0.2, d + 0.06, 1.35, 0.22, 0.1);
   };
-  const perSide = Math.max(2, Math.round(hx / 2.4));
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < perSide; i++) {
-      const u = ((i + 0.5) / perSide) * 2 * hx - hx;
-      const doorHere = side === 1 && i === Math.floor(perSide / 2);
-      if (!doorHere) windowAt(u, 1.9, side, false);
-      windowAt(u, 4.9, side, false);
-    }
-    windowAt(0, 4.9, side, true);
-    windowAt(0, 1.9, side, true);
+  win(-w * 0.62, 5.2, 1.5);
+  win(-w * 0.08, 5.0, 2.1);
+  win(w * 0.55, 5.4, 1.8);
+
+  // The door, under its signboard, with a plaque either side and an iron railing.
+  const doorX = -w * 0.08;
+  p.box(0x6a3a35, doorX, 1.25, d + 0.04, 1.1, 2.5, 0.08);
+  p.box(LINTEL, doorX, 2.62, d + 0.06, 1.4, 0.16, 0.1);
+  p.box(WOOD, doorX, 3.05, d + 0.1, 2.3, 0.42, 0.08);
+  const sign = makeSign('Forbes Mill', 'caps', LINTEL, 2.1, 0.3);
+  sign.applyMatrix4(new THREE.Matrix4().makeTranslation(doorX, 3.05, d + 0.15).premultiply(frame));
+  k.signs.add(sign);
+  p.box(P.brass, doorX - 2.6, 2.3, d + 0.04, 0.8, 1.0, 0.05);
+  p.box(P.brass, doorX + 1.5, 1.7, d + 0.04, 0.6, 0.45, 0.05);
+  for (let x = doorX - 3.2; x <= doorX - 0.8; x += 0.3) p.box(IRON, x, 0.5, d + 1.1, 0.03, 0.9, 0.03);
+  p.box(IRON, doorX - 2.0, 0.95, d + 1.1, 2.5, 0.04, 0.04);
+  p.box(P.stone, doorX, 0.08, d + 0.6, 2.4, 0.16, 1.2);
+
+  // A rusted iron door at the far end, in its own pale surround.
+  p.box(LINTEL, -w + 1.3, 1.35, d + 0.03, 1.9, 2.7, 0.06);
+  p.box(0x9c5d4a, -w + 1.3, 1.25, d + 0.07, 1.4, 2.4, 0.06);
+  p.box(0x7d4739, -w + 1.3, 1.5, d + 0.11, 0.7, 0.9, 0.02);
+
+  // The old freight wagon that stands outside, and a barrel.
+  const wx = w * 0.55, wz = d + 2.2;
+  p.box(WOOD, wx, 1.05, wz, 3.0, 0.5, 1.2);
+  p.box(0x5a3d30, wx, 1.35, wz, 3.1, 0.08, 1.3);
+  p.box(0x4a3a36, wx - 1.9, 1.3, wz, 0.9, 0.5, 0.9);
+  for (const sx of [-1.1, 1.1]) for (const sz of [-0.68, 0.68]) {
+    p.cyl(0x4a3a36, wx + sx, 0.62, wz + sz, 0.62, 0.62, 0.08, 14, { rx: Math.PI / 2 });
+    p.cyl(WOOD, wx + sx, 0.62, wz + sz + Math.sign(sz) * 0.02, 0.5, 0.5, 0.09, 14, { rx: Math.PI / 2 });
   }
-
-  // A wide plank door on the long side, a stone step, and the landmark plaque beside it.
-  const doorU = ((Math.floor(perSide / 2) + 0.5) / perSide) * 2 * hx - hx;
-  p.box(WOOD, doorU, 1.35, hz + 0.03, 1.9, 2.7, 0.08);
-  p.box(0x5a3d30, doorU, 1.35, hz + 0.075, 0.05, 2.7, 0.02);
-  p.box(0xeadfc6, doorU, 2.82, hz + 0.05, 2.3, 0.26, 0.1);
-  p.box(P.brass, doorU + 0.25, 1.3, hz + 0.09, 0.05, 0.26, 0.05);
-  p.box(P.stone, doorU, 0.08, hz + 0.45, 2.6, 0.16, 0.9);
-  p.box(P.brass, doorU + 1.7, 1.6, hz + 0.04, 0.6, 0.45, 0.04);
-  k.glow.box(P.lampGlow, doorU - 1.45, 2.5, hz + 0.16, 0.2, 0.3, 0.2);
-  p.box(P.ink, doorU - 1.45, 2.72, hz + 0.1, 0.26, 0.06, 0.32);
-
-  for (const b of [k.paint, k.glow]) b.frame.identity();
+  p.cyl(0x8a4a3a, wx - 3.0, 0.6, wz - 0.2, 0.45, 0.42, 1.2, 12);
+  done(k);
 };
 
 /**
@@ -159,12 +144,6 @@ function frontOn(k: Kit, ring: number[], base: number, face = 0): { w: number; d
 
 function done(k: Kit): void {
   for (const b of [k.paint, k.glow, k.glint]) b.frame.identity();
-}
-
-function lettering(k: Kit, frame: THREE.Matrix4, text: string, style: SignStyle, ink: number, x: number, y: number, z: number, maxWidth: number, height: number): void {
-  const sign = makeSign(text, style, ink, maxWidth, height);
-  sign.applyMatrix4(new THREE.Matrix4().makeTranslation(x, y, z).premultiply(frame));
-  k.signs.add(sign);
 }
 
 /**
@@ -298,107 +277,179 @@ const theatre: HeroBuilder = (k, ring, base, face) => {
 };
 
 /**
- * The Los Gatos Library: a contemporary building of glass, pale stone and warm wood under a
- * broad flat roof. Stylized from a general impression, not from photographs or plans.
+ * The Los Gatos Library, after a photograph of the building: a ground floor of pale stone blocks
+ * with punched windows, an upper floor of green-tinted glass, crimson metal frames, a glazed
+ * entrance under a teal canopy, and its name in thin letters on the stone.
  */
 const library: HeroBuilder = (k, ring, base, face) => {
   const p = k.paint;
   const { w, d, frame } = frontOn(k, ring, base, face);
-  const H = 8.6;
-  const WOOD = 0xb98a5e;
+  const STONE = 0xe8dabd;
+  const JOINT = 0xd6c6a6;
+  const GLASS = 0x9cc6c0;
+  const SPANDREL = 0x74a894;
+  const RED = 0xb23540;
+  const TEAL = 0x4f9c98;
+  const FRAME = 0xf3f1ea;
+  const LOWER = 4.3, H = 8.6;
 
-  p.box(P.warmWhite, 0, H / 2, 0, w * 2, H, d * 2);
-  // A deep roof that sails out past the walls.
-  p.box(P.stone, 0, H + 0.25, 0, w * 2 + 3.0, 0.5, d * 2 + 3.0);
-  p.box(P.roof, 0, H + 0.52, 0, w * 2 + 2.4, 0.06, d * 2 + 2.4);
+  // Stone below, with courses and upright joints lightly drawn.
+  p.box(STONE, 0, LOWER / 2, 0, w * 2, LOWER, d * 2);
+  for (let y = 0.7; y < LOWER; y += 0.7) p.box(JOINT, 0, y, d + 0.012, w * 2, 0.03, 0.02);
+  for (let i = 0; i < Math.round(w * 1.6); i++) p.box(JOINT, -w + 0.6 + i * 1.3 + (i % 2) * 0.4, 0.35 + (i % 6) * 0.7, d + 0.012, 0.03, 0.7, 0.02);
 
-  // The front: two storeys of glass between slim mullions, with a wood-clad entrance bay.
-  const glassW = w * 1.25;
-  const gx = -w + glassW / 2 + 0.8;
-  p.box(P.glass, gx, 4.3, d + 0.03, glassW, 7.4, 0.08);
-  k.glow.box(P.backdropButter, gx, 2.0, d + 0.08, glassW - 0.4, 2.6, 0.03);
-  for (let x = gx - glassW / 2; x <= gx + glassW / 2 + 0.01; x += glassW / Math.round(glassW / 1.7)) p.box(P.trim, x, 4.3, d + 0.1, 0.1, 7.4, 0.1);
-  for (const y of [0.6, 4.2, 8.0]) p.box(P.trim, gx, y, d + 0.1, glassW, 0.14, 0.1);
-  k.glint.box(0xffffff, gx - glassW * 0.2, 4.3, d + 0.16, glassW * 0.12, 7.2, 0.005);
-
-  const bay = w * 2 - glassW - 1.6;
-  const bx = w - bay / 2 - 0.4;
-  p.box(WOOD, bx, H / 2, d + 0.2, bay, H, 0.5);
-  for (let i = 1; i < Math.round(bay / 0.7); i++) p.box(0xa67a52, bx - bay / 2 + (i * bay) / Math.round(bay / 0.7), H / 2, d + 0.46, 0.04, H, 0.02);
-  p.box(P.glass, bx, 1.5, d + 0.47, Math.min(3.2, bay - 1), 3.0, 0.06);
-  p.box(P.trim, bx, 1.5, d + 0.5, 0.08, 3.0, 0.04);
-  p.box(P.stone, bx, 3.35, d + 1.3, Math.min(4.4, bay), 0.22, 2.4);
-  lettering(k, frame, 'Los Gatos Library', 'italic', P.trim, bx, 5.4, d + 0.5, bay - 0.8, 0.7);
-  p.box(P.stone, bx, 0.07, d + 1.6, Math.min(5, bay + 0.5), 0.14, 2.8);
-
-  // Bands of window down both sides.
-  for (const s of [-1, 1]) {
-    for (const y of [2.2, 6.0]) p.box(P.glass, s * (w + 0.03), y, 0, 0.08, 2.0, d * 1.6);
-    for (let z = -d * 0.8; z <= d * 0.8 + 0.01; z += (d * 1.6) / Math.round((d * 1.6) / 2.2)) p.box(P.trim, s * (w + 0.08), 4.1, z, 0.08, 5.9, 0.1);
+  // Glass above: tall panes over a band of deeper green, between white mullions, on all four sides.
+  p.box(GLASS, 0, (LOWER + H) / 2, 0, w * 2 - 0.1, H - LOWER, d * 2 - 0.1);
+  for (const [half, along] of [[w, true], [d, false]] as const) {
+    for (const side of [-1, 1]) {
+      const other = (along ? d : w) * side;
+      const put = (c: number, u: number, y: number, su: number, sy: number, proud: number) =>
+        along ? p.box(c, u, y, other + side * proud, su, sy, 0.06) : p.box(c, other + side * proud, y, u, 0.06, sy, su);
+      put(SPANDREL, 0, LOWER + 0.45, half * 2, 0.9, 0.0);
+      for (let u = -half; u <= half + 0.01; u += (half * 2) / Math.round((half * 2) / 1.5)) put(FRAME, u, (LOWER + H) / 2, 0.09, H - LOWER, 0.03);
+      put(FRAME, 0, LOWER + 0.92, half * 2, 0.07, 0.03);
+      put(FRAME, 0, LOWER + 0.02, half * 2 + 0.2, 0.16, 0.05);
+    }
   }
+  k.glint.box(0xffffff, w * 0.3, (LOWER + H) / 2, d + 0.1, 0.9, H - LOWER - 0.4, 0.005);
+  // A thin white roof sailing just past the glass.
+  p.box(FRAME, 0, H + 0.12, 0, w * 2 + 0.9, 0.24, d * 2 + 0.9);
+  p.box(P.roof, 0, H + 0.26, 0, w * 2 + 0.5, 0.05, d * 2 + 0.5);
+
+  // The crimson frame boxed round the glass at one corner.
+  const rx = -w + w * 0.34;
+  for (const [x, y, sx, sy] of [[rx, H - 0.25, w * 0.68, 0.34], [rx, LOWER + 0.25, w * 0.68, 0.34], [-w + 0.17, (LOWER + H) / 2, 0.34, H - LOWER], [-w + w * 0.68, (LOWER + H) / 2, 0.34, H - LOWER]]) {
+    p.box(RED, x, y, d + 0.3, sx, sy, 0.7);
+  }
+
+  // Punched windows in the stone, each with a crimson panel beneath.
+  for (const x of [-w * 0.8, -w * 0.45, w * 0.5, w * 0.82]) {
+    p.box(0x4d6a66, x, 2.4, d + 0.03, 1.5, 1.7, 0.06);
+    p.box(FRAME, x, 2.4, d + 0.06, 0.06, 1.7, 0.03);
+    p.box(RED, x, 1.25, d + 0.04, 1.5, 0.55, 0.07);
+  }
+
+  // The entrance: a run of glass doors under a teal canopy, with the name on the wall beside it.
+  const ex = w * 0.08, ew = Math.min(6.5, w * 0.5);
+  p.box(0x5d7f7c, ex, 1.6, d + 0.04, ew, 3.1, 0.08);
+  k.glow.box(P.backdropButter, ex, 1.0, d + 0.09, ew - 0.3, 1.4, 0.03);
+  for (let x = ex - ew / 2; x <= ex + ew / 2 + 0.01; x += ew / 5) p.box(FRAME, x, 1.6, d + 0.1, 0.08, 3.1, 0.06);
+  p.box(TEAL, ex, 3.45, d + 1.5, ew + 1.2, 0.2, 3.0);
+  p.box(0x3f817e, ex, 3.3, d + 2.96, ew + 1.2, 0.12, 0.1);
+  for (const s of [-1, 1]) p.cyl(FRAME, ex + s * (ew / 2 + 0.3), 1.7, d + 2.7, 0.07, 0.07, 3.4, 8);
+  const name = makeSign('Los Gatos Library', 'caps', 0x8f8168, Math.min(6, w * 0.5), 0.5);
+  name.applyMatrix4(new THREE.Matrix4().makeTranslation(ex - ew / 2 - Math.min(6, w * 0.5) / 2 - 0.6, 2.6, d + 0.03).premultiply(frame));
+  k.signs.add(name);
+
+  // The forecourt: pale paving, a bench, bicycle hoops and planting along the wall.
+  p.box(0xe6ddcd, ex, 0.04, d + 3.2, ew + 6, 0.06, 6.2);
+  p.box(0x9a7758, ex - ew / 2 - 2, 0.45, d + 4.4, 1.8, 0.07, 0.5);
+  p.box(0x9a7758, ex - ew / 2 - 2, 0.72, d + 4.18, 1.8, 0.4, 0.06);
+  for (let i = 0; i < 3; i++) p.add(new THREE.TorusGeometry(0.34, 0.03, 5, 12, Math.PI), P.steel, ex + ew / 2 + 1.5 + i * 0.6, 0.02, d + 4.2, {});
+  for (let x = -w + 1; x < ex - ew / 2 - 1; x += 1.1) p.blob([P.leafC, P.leafA, P.cedarA][Math.round(x * 3) % 3 < 0 ? 0 : Math.abs(Math.round(x * 3)) % 3], x, 0.4, d + 0.7, 0.55, 0.5, 0.5);
   done(k);
 };
 
 /**
- * Los Gatos High School's main building: a white neoclassical front of 1925 with a columned
- * portico. Stylized from the general description; the roof, window count and proportions are guesses.
+ * Los Gatos High School's main building, after a photograph of its front: two storeys of buff
+ * stucco under a flat parapet, a taller entrance bay with four square pilasters, dark windows in
+ * groups, clipped hedges along the wall, broad red steps with black rails, and pink paths
+ * crossing the lawn under big oaks.
  */
 const highSchool: HeroBuilder = (k, ring, base, face) => {
   const p = k.paint;
   const { w, d, frame } = frontOn(k, ring, base, face);
-  const H = 9.4;
-  const WHITE = 0xf8f4ea;
+  const BUFF = 0xebe2c4;
+  const TRIM = 0xf5efd9;
+  const DARK = 0x353b36;
+  const BRICK = 0xb4664e;
+  const PATH = 0xe3bba9;
+  const H = 8.8;
 
-  p.box(WHITE, 0, H / 2, 0, w * 2, H, d * 2);
-  p.box(0xe9e2d2, 0, 0.5, 0, w * 2 + 0.3, 1.0, d * 2 + 0.3);
-  p.box(P.trim, 0, H - 0.25, 0, w * 2 + 0.6, 0.5, d * 2 + 0.6);
-  // A low tiled roof.
-  p.cone(P.terracotta, 0, H, 0, Math.SQRT1_2, 2.4, 4, { ry: Math.PI / 4, sx: w * 2 + 1.2, sz: d * 2 + 1.2, flat: true });
+  p.box(BUFF, 0, H / 2, 0, w * 2, H, d * 2);
+  p.box(TRIM, 0, H + 0.2, 0, w * 2 + 0.3, 0.4, d * 2 + 0.3);
+  p.box(P.roof, 0, H + 0.02, 0, w * 2 - 0.8, 0.5, d * 2 - 0.8);
+  p.box(TRIM, 0, 4.55, d + 0.03, w * 2, 0.16, 0.06);
 
-  // Two rows of tall windows across the front and down the sides.
-  const cols = Math.max(4, Math.round(w / 2.2));
-  for (let i = 0; i < cols * 2; i++) {
-    const x = ((i + 0.5) / (cols * 2) - 0.5) * 2 * w;
-    if (Math.abs(x) < 6.2) continue;
-    for (const y of [3.0, 6.9]) {
-      p.box(P.trim, x, y, d + 0.03, 1.5, 2.7, 0.06);
-      p.box(P.glass, x, y, d + 0.05, 1.2, 2.4, 0.06);
-      p.box(P.trim, x, y, d + 0.09, 0.06, 2.4, 0.02);
+  // The entrance bay stands forward and taller, with pilasters running its full height.
+  const EW = 7.2, ED = 1.3, EH = H + 1.3;
+  p.box(BUFF, 0, EH / 2, d + ED / 2, EW * 2, EH, ED);
+  p.box(TRIM, 0, EH + 0.15, d + ED / 2, EW * 2 + 0.4, 0.3, ED + 0.4);
+  p.box(TRIM, 0, EH + 0.5, d + ED / 2, EW * 1.2, 0.4, ED);
+  for (const x of [-EW * 0.85, -EW * 0.3, EW * 0.3, EW * 0.85]) {
+    p.box(TRIM, x, EH / 2 - 0.1, d + ED + 0.12, 0.95, EH - 0.5, 0.26);
+    p.box(TRIM, x, EH - 0.5, d + ED + 0.16, 1.2, 0.3, 0.34);
+    p.box(TRIM, x, 0.3, d + ED + 0.16, 1.2, 0.6, 0.34);
+    p.ball(TRIM, x, EH + 0.55, d + ED + 0.1, 0.18, 0.22, 0.18);
+  }
+  // Doors below and tall windows above, between the pilasters.
+  for (const x of [-EW * 0.575, 0, EW * 0.575]) {
+    p.box(DARK, x, 1.75, d + ED + 0.03, 2.2, 3.3, 0.06);
+    k.glow.box(P.backdropButter, x, 3.0, d + ED + 0.07, 2.0, 0.6, 0.03);
+    p.box(TRIM, x, 1.75, d + ED + 0.08, 0.07, 3.3, 0.03);
+    p.box(DARK, x, 6.7, d + ED + 0.03, 2.2, 2.9, 0.06);
+    for (const dx of [-0.37, 0.37]) p.box(TRIM, x + dx, 6.7, d + ED + 0.08, 0.05, 2.9, 0.03);
+    p.box(TRIM, x, 7.2, d + ED + 0.08, 2.2, 0.05, 0.03);
+  }
+
+  // Wings: dark windows in groups of three, on both floors.
+  for (const side of [-1, 1]) {
+    const from = EW + 1.6, to = w - 1.2;
+    const groups = Math.max(1, Math.round((to - from) / 5.4));
+    for (let g = 0; g < groups; g++) {
+      const gx = side * (from + ((g + 0.5) * (to - from)) / groups);
+      for (const y of [2.6, 6.75]) {
+        for (const dx of [-1.25, 0, 1.25]) {
+          p.box(DARK, gx + dx, y, d + 0.03, 1.05, 2.5, 0.06);
+          p.box(TRIM, gx + dx, y + 0.5, d + 0.07, 1.05, 0.05, 0.03);
+          p.box(TRIM, gx + dx, y, d + 0.07, 0.05, 2.5, 0.03);
+        }
+        p.box(TRIM, gx, y - 1.34, d + 0.07, 3.9, 0.12, 0.14);
+      }
+    }
+    // A clipped hedge along the foot of the wall.
+    for (let x = from - 0.6; x < to + 0.6; x += 1.5) p.blob(g2(x), side * x, 0.55, d + 1.0, 0.95, 0.62, 0.75);
+    for (let z = -d * 0.7; z <= d * 0.7 + 0.01; z += 3.6) {
+      for (const y of [2.6, 6.75]) p.box(DARK, side * (w + 0.03), y, z, 0.06, 2.5, 1.2);
     }
   }
-  for (const s of [-1, 1]) {
-    for (let z = -d * 0.7; z <= d * 0.7 + 0.01; z += 3.4) {
-      for (const y of [3.0, 6.9]) p.box(P.glass, s * (w + 0.03), y, z, 0.06, 2.4, 1.2);
-    }
+
+  // Broad red steps with black rails, and urn-topped cheek walls.
+  const sz0 = d + ED;
+  for (let i = 0; i < 7; i++) p.box(BRICK, 0, 0.1 + i * 0.2, sz0 + (7 - i) * 0.42, EW * 1.5, 0.2, 0.84);
+  p.box(BRICK, 0, 0.7, sz0 + 0.3, EW * 1.5, 1.4, 0.6);
+  for (const x of [-EW * 0.75 - 0.4, EW * 0.75 + 0.4]) {
+    p.box(TRIM, x, 0.55, sz0 + 1.6, 0.7, 1.1, 3.2);
+    p.ball(TRIM, x, 1.45, sz0 + 2.9, 0.3, 0.36, 0.3);
+  }
+  for (const x of [-EW * 0.25, EW * 0.25]) {
+    p.add(new THREE.BoxGeometry(1, 1, 1), 0x2b2a30, x, 1.45, sz0 + 1.75, { sx: 0.05, sy: 0.05, sz: 3.4, rx: 0.42 });
+    for (const dz of [0.5, 1.75, 3.0]) p.box(0x2b2a30, x, 1.5 - dz * 0.4, sz0 + dz, 0.04, 0.9, 0.04);
   }
 
-  // The portico: broad steps, six columns, and a pediment.
-  const PW = 6.0, PD = 4.2;
-  for (let i = 0; i < 4; i++) p.box(0xe9e2d2, 0, 0.13 + i * 0.26, d + PD / 2 + (3 - i) * 0.45, PW * 2 + 2.4 - i * 0.3, 0.26, PD + (3 - i) * 0.9);
-  for (let i = 0; i < 6; i++) {
-    const x = ((i / 5) - 0.5) * (PW * 2 - 1.2);
-    p.cyl(WHITE, x, 1.04 + 3.6, d + PD - 0.7, 0.36, 0.44, 7.2, 12);
-    p.box(WHITE, x, 1.2, d + PD - 0.7, 1.05, 0.3, 1.05);
-    p.box(WHITE, x, 8.34, d + PD - 0.7, 1.05, 0.26, 1.05);
+  // The lawn, with a broad walk to the steps and two paths angling away across the grass.
+  p.box(P.lawn, 0, 0.05, sz0 + 26, w * 2 + 20, 0.06, 46);
+  p.box(PATH, 0, 0.075, sz0 + 12, 5.2, 0.06, 18);
+  for (const side of [-1, 1]) p.box(PATH, side * 13, 0.075, sz0 + 27, 4.4, 0.06, 30, side * 0.85);
+  p.box(PATH, 0, 0.075, sz0 + 36, 4.4, 0.06, 26);
+
+  // Two great oaks on the lawn, set to the sides so the front stays in view.
+  for (const [ox, oz, s] of [[EW + 11, 15, 1], [-EW - 15, 20, 0.85]]) {
+    p.cyl(0x6f5a48, ox, 3.4 * s, sz0 + oz, 0.5 * s, 0.85 * s, 6.8 * s, 9);
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.4, r = i === 0 ? 0 : 4.6 * s;
+      p.blob([0x5f8a55, 0x4f7a4c, 0x6f9a5b][i % 3], ox + Math.cos(a) * r, (8.6 + (i % 3) * 1.1) * s, sz0 + oz + Math.sin(a) * r, 4.6 * s, 3.2 * s, 4.6 * s);
+    }
   }
-  p.box(WHITE, 0, 8.95, d + PD / 2, PW * 2, 0.95, PD);
-  p.wedge(WHITE, 0, 9.42, d + PD / 2, PD, 2.2, PW + 0.3, Math.PI / 2);
-  p.wedge(WHITE, 0, 9.42, d + PD / 2, PD, 2.2, PW + 0.3, -Math.PI / 2);
-  p.box(P.trim, 0, 9.46, d + PD / 2, PW * 2 + 0.7, 0.14, PD + 0.4);
-  lettering(k, frame, 'Los Gatos High School', 'caps', P.navy, 0, 8.95, d + PD + 0.03, PW * 2 - 1, 0.5);
-  // Entrance doors behind the columns.
-  for (const x of [-2.4, 0, 2.4]) {
-    p.box(P.inkGreen, x, 2.5, d + 0.04, 1.6, 3.2, 0.1);
-    k.glow.box(P.backdropButter, x, 4.5, d + 0.06, 1.6, 0.7, 0.04);
-  }
-  // The rise of lawn in front, with a path up to the steps.
-  p.box(P.lawn, 0, 0.05, d + PD + 24, w * 2 + 16, 0.06, 44);
-  p.box(P.sidewalk, 0, 0.07, d + PD + 24, 4.2, 0.06, 44);
+  const name = makeSign('Los Gatos High School', 'caps', 0x6f6650, EW * 1.5, 0.42);
+  name.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 4.75, d + ED + 0.04).premultiply(frame));
+  k.signs.add(name);
   // A flagpole on the lawn.
-  p.cyl(P.steel, PW + 6, 5.5, d + PD + 9, 0.06, 0.09, 11, 8);
-  p.box(P.oxblood, PW + 6.8, 10.2, d + PD + 9, 1.5, 0.95, 0.04);
+  p.cyl(P.steel, EW + 3, 5.5, sz0 + 8, 0.06, 0.09, 11, 8);
+  p.box(P.oxblood, EW + 3.8, 10.2, sz0 + 8, 1.5, 0.95, 0.04);
   done(k);
 };
+const g2 = (x: number) => [0x5f8a55, 0x6f9a5b, 0x557f4f][Math.abs(Math.round(x * 2)) % 3];
 
 /**
  * The W.E. "Bill" Mason Carousel: a round pavilion with a striped tent roof and a ring of horses.
@@ -427,7 +478,9 @@ const carousel: HeroBuilder = (k, ring, base) => {
   const glow = new Batch();
   // The tent roof is kept apart so a window can open in it when the cat is riding underneath.
   const roof = new Batch();
-  t.cyl(P.oxblood, 0, 0.42, 0, R - 0.3, R - 0.3, 0.12, 28);
+  // A deck of varnished boards, as in photographs of the carousel.
+  t.cyl(0x9a5f3c, 0, 0.42, 0, R - 0.3, R - 0.3, 0.12, 28);
+  for (let i = 0; i < 14; i++) t.box(0x7f4a2e, 0, 0.485, 0, (R - 0.3) * 2, 0.012, 0.05, (i / 14) * Math.PI);
   // Centre drum with mirrors and lights.
   t.cyl(P.cream, 0, 2.3, 0, 1.5, 1.5, 3.7, 12);
   for (let i = 0; i < 12; i++) {
@@ -453,21 +506,29 @@ const carousel: HeroBuilder = (k, ring, base) => {
   t.box(P.oxblood, 0.3, 8.0, 0, 0.6, 0.35, 0.03);
 
   // Two rings of horses on brass poles. Each horse is its own piece so it can rise and fall.
-  const COATS = [P.warmWhite, 0xc8a57a, P.slateBlue, P.blush, P.butter, 0x8a6f5c];
+  // White and cream horses with a brown one here and there, in bright painted saddles.
+  const COATS = [0xfbf8f1, 0xf3ecdd, 0xfbf8f1, 0x9a6a4a, 0xf6efe2, 0xfbf8f1];
+  const SADDLES = [0x3f7fd0, P.persimmon, 0xf2c14e, 0xd9577a, P.deepGreen, 0x7d5bb5];
+  const GOLD = 0xd4a93a;
   const horses: { group: THREE.Group; rest: number; phase: number }[] = [];
   [[R - 1.5, 10, 0], [R - 3.3, 7, 0.4]].forEach(([rad, count, phase], ringIndex) => {
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + phase;
       const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
       const coat = COATS[(i + ringIndex * 2) % COATS.length];
-      t.cyl(P.brass, x, 2.5, z, 0.035, 0.035, 4.2, 6);
+      t.cyl(GOLD, x, 2.5, z, 0.05, 0.05, 4.2, 6);
       // Built facing +x, then turned to face the way the carousel goes round.
       const h = new Batch();
       h.ball(coat, 0, 0, 0, 0.62, 0.3, 0.24);
       h.ball(coat, 0.62, 0.36, 0, 0.2, 0.26, 0.16);
       h.ball(coat, 0.84, 0.42, 0, 0.17, 0.12, 0.11);
       h.ball(coat, -0.66, 0.1, 0, 0.1, 0.2, 0.08);
-      h.box([P.persimmon, P.navy, P.deepGreen][i % 3], 0, 0.26, 0, 0.36, 0.1, 0.5);
+      // Saddle, saddle cloth, bridle and a flowing mane and tail.
+      h.box(SADDLES[(i + ringIndex * 3) % 6], 0, 0.27, 0, 0.42, 0.12, 0.52);
+      h.box(SADDLES[(i + ringIndex * 3 + 2) % 6], 0, 0.2, 0, 0.6, 0.05, 0.5);
+      h.box(SADDLES[(i + 1) % 6], 0.74, 0.45, 0, 0.05, 0.14, 0.24);
+      h.ball(coat === 0x9a6a4a ? 0x3d2c25 : 0xd9c08a, 0.5, 0.5, 0, 0.1, 0.24, 0.07);
+      h.ball(coat === 0x9a6a4a ? 0x3d2c25 : 0xd9c08a, -0.72, 0.05, 0, 0.07, 0.26, 0.07);
       for (const s of [-0.4, 0.4]) h.cyl(coat, s, -0.42, 0, 0.06, 0.05, 0.6, 6);
       const mesh = h.build(paint)!;
       mesh.castShadow = true;

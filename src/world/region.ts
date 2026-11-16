@@ -956,32 +956,57 @@ function makeTrain(line: number[], station: { x: number; z: number } | null, dec
     group.add(mesh);
     return mesh;
   };
+  // The headlamp: a pale disc on the front of the boiler.
+  const k_glow = (b: Batch, x: number, y: number) => b.cyl(P.lampGlow, x, y, 0, 0.13, 0.13, 0.06, 10, { rz: Math.PI / 2 });
   const wheels = (b: Batch, xs: number[]) => {
     for (const x of xs) for (const z of [-0.42, 0.42]) b.cyl(P.ink, x, 0.24, z, 0.24, 0.24, 0.1, 10, { rx: Math.PI / 2 });
   };
+  // After a photograph of the real train: a black engine with a silver smokebox front and a brass
+  // bell, and open cars in bright green with a yellow rail, carrying passengers.
+  const GREEN = 0x3fa05a, RAIL = 0xf2c14e, BLACK = 0x26262b;
+  const SHIRTS = [P.navy, P.warmWhite, P.oxblood, P.butter, P.slateBlue, P.persimmon];
+  const SKINS = [0xf0cdb0, 0xdca883, 0xb9825e, 0x8a5a3e];
   // Vehicles are built facing +x.
   const cars = [
     vehicle((b) => {
-      b.box(P.ink, 0, 0.42, 0, 3.0, 0.2, 0.9);
-      b.cyl(P.inkGreen, 0.35, 0.95, 0, 0.42, 0.42, 1.9, 12, { rz: Math.PI / 2 });
-      b.cyl(P.brass, 1.32, 0.95, 0, 0.44, 0.44, 0.08, 12, { rz: Math.PI / 2 });
-      b.cyl(P.ink, 0.95, 1.7, 0, 0.16, 0.12, 0.7, 8);
-      b.cyl(P.ink, 0.95, 2.08, 0, 0.22, 0.16, 0.12, 8);
-      b.ball(P.brass, 0.2, 1.42, 0, 0.17, 0.2, 0.17);
-      b.box(P.inkGreen, -1.0, 1.1, 0, 0.95, 1.2, 1.0);
-      b.box(P.oxblood, -1.0, 1.75, 0, 1.2, 0.1, 1.15);
+      b.box(BLACK, 0, 0.42, 0, 3.0, 0.2, 0.9);
+      b.cyl(BLACK, 0.35, 0.95, 0, 0.42, 0.42, 1.9, 12, { rz: Math.PI / 2 });
+      b.cyl(0xc9ccd2, 1.32, 0.95, 0, 0.44, 0.44, 0.08, 12, { rz: Math.PI / 2 });
+      k_glow(b, 1.38, 1.5);
+      b.cyl(BLACK, 0.95, 1.7, 0, 0.16, 0.12, 0.7, 8);
+      b.cyl(BLACK, 0.95, 2.08, 0, 0.22, 0.16, 0.12, 8);
+      b.ball(P.brass, 0.3, 1.5, 0, 0.15, 0.19, 0.15);
+      b.ball(BLACK, -0.15, 1.42, 0, 0.17, 0.2, 0.17);
+      b.box(BLACK, -1.0, 1.1, 0, 0.95, 1.2, 1.0);
+      b.box(BLACK, -1.0, 1.75, 0, 1.2, 0.1, 1.15);
       b.box(P.glass, -1.0, 1.3, 0.51, 0.5, 0.4, 0.02);
       b.box(P.glass, -1.0, 1.3, -0.51, 0.5, 0.4, 0.02);
-      b.wedge(P.oxblood, 1.55, 0.3, 0, 0.9, 0.35, 0.45, Math.PI / 2);
+      b.wedge(0xc9ccd2, 1.55, 0.3, 0, 0.9, 0.35, 0.45, Math.PI / 2);
+      b.box(P.oxblood, 1.3, 0.75, 0.5, 0.25, 0.16, 0.02);
       wheels(b, [-0.9, 0, 0.9]);
     }),
-    ...[P.oxblood, P.butter, P.navy].map((c) =>
+    ...[0, 1, 2].map((n) =>
       vehicle((b) => {
-        b.box(P.ink, 0, 0.42, 0, 2.6, 0.16, 0.9);
-        b.box(c, 0, 0.72, 0.5, 2.6, 0.5, 0.06);
-        b.box(c, 0, 0.72, -0.5, 2.6, 0.5, 0.06);
-        for (const x of [-1.27, 1.27]) b.box(c, x, 0.72, 0, 0.06, 0.5, 1.0);
+        b.box(BLACK, 0, 0.42, 0, 2.6, 0.16, 0.9);
+        b.box(GREEN, 0, 0.72, 0.5, 2.6, 0.5, 0.06);
+        b.box(GREEN, 0, 0.72, -0.5, 2.6, 0.5, 0.06);
+        for (const x of [-1.27, 1.27]) b.box(GREEN, x, 0.72, 0, 0.06, 0.5, 1.0);
+        b.box(RAIL, 0, 0.99, 0.5, 2.64, 0.05, 0.08);
+        b.box(RAIL, 0, 0.99, -0.5, 2.64, 0.05, 0.08);
+        b.cyl(RAIL, 0, 0.72, 0.535, 0.14, 0.14, 0.02, 10, { rx: Math.PI / 2 });
+        b.cyl(RAIL, 0, 0.72, -0.535, 0.14, 0.14, 0.02, 10, { rx: Math.PI / 2 });
         for (const x of [-0.7, 0.1, 0.9]) b.box(P.trunk, x, 0.72, 0, 0.12, 0.4, 0.9);
+        // Passengers, leaving the front seat of the first car free for a cat.
+        for (let seat = n === 0 ? 1 : 0; seat < 3; seat++) {
+          for (const z of [-0.2, 0.22]) {
+            const pick = n * 7 + seat * 3 + (z > 0 ? 1 : 0);
+            if (pick % 5 === 4) continue;
+            const x = 0.75 - seat * 0.8;
+            b.cyl(SHIRTS[pick % 6], x, 1.12, z, 0.13, 0.17, 0.5, 7);
+            b.ball(SKINS[pick % 4], x, 1.48, z, 0.11, 0.12, 0.11);
+            b.ball([P.ink, 0x5b4336, 0xd9b96e, 0xb9b3b0][pick % 4], x - 0.02, 1.53, z, 0.115, 0.1, 0.12);
+          }
+        }
         wheels(b, [-0.85, 0.85]);
       }),
     ),
@@ -1051,8 +1076,8 @@ function makeTrain(line: number[], station: { x: number; z: number } | null, dec
     label: 'Hop on the train',
     near: (pos) => cars.some((c) => Math.hypot(c.position.x - pos.x, c.position.z - pos.z) < 4.5 && Math.abs(c.position.y - pos.y) < 3),
     seat(out) {
-      out.copy(car.position);
-      out.y += 0.42;
+      // The front seat of the first car, which is kept free.
+      out.set(car.position.x + Math.cos(car.rotation.y) * 0.75, car.position.y + 0.42, car.position.z - Math.sin(car.rotation.y) * 0.75);
       return car.rotation.y + Math.PI / 2;
     },
     exit(out) {
