@@ -45,6 +45,8 @@ const STREETS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unc
 const SIDEWALK = 2.6;
 const WALLS = [P.cream, P.warmWhite, P.blush, P.sage, P.butter, P.paleTerracotta, P.slateBlue, P.cream, P.warmWhite];
 const HOUSES = new Set(['house', 'detached', 'residential', 'garage', 'shed', 'apartments']);
+/** The world is cut into square tiles this many metres across, so what is out of view is not drawn. */
+const CHUNK = 72;
 const PITCHED_ROOFS = [P.terracotta, 0xb8664a, 0xa8785a, 0x9a8f96];
 const FLAT_ROOFS = [P.roof, 0xd3c8bb, 0xcfc6c0, 0xe0d6c8];
 const WALKABLE = new Set(['cycleway', 'footway', 'path', 'pedestrian']);
@@ -245,22 +247,60 @@ export async function loadRegion(id: string, from: string | null = null): Promis
         col.set([c.r, c.g, c.b], k * 3);
       }
     }
-    const index: number[] = [];
+    // Normals are worked out once over the whole sheet, so tiles meet without a visible seam.
+    const whole = new THREE.BufferGeometry();
+    const position = new THREE.BufferAttribute(pos, 3);
+    const color = new THREE.BufferAttribute(col, 3);
+    whole.setAttribute('position', position);
+    const all: number[] = [];
     for (let j = 0; j < T.rows - 1; j++) {
       for (let i = 0; i < T.cols - 1; i++) {
         const k = j * T.cols + i;
-        index.push(k, k + T.cols, k + 1, k + 1, k + T.cols, k + T.cols + 1);
+        all.push(k, k + T.cols, k + 1, k + 1, k + T.cols, k + T.cols + 1);
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setIndex(index);
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, gouache({ vertexColors: true, meadow: true }));
-    mesh.receiveShadow = true;
-    mesh.castShadow = true;
-    group.add(mesh);
+    whole.setIndex(all);
+    whole.computeVertexNormals();
+    const normal = whole.attributes.normal;
+
+    // The sheet is drawn as tiles, so those out of the picture are skipped. A tile that is dead
+    // flat and all one colour is drawn with far fewer, larger triangles.
+    const TILE = 32, COARSE = 8;
+    const ground = gouache({ vertexColors: true, meadow: true });
+    for (let tj = 0; tj < T.rows - 1; tj += TILE) {
+      for (let ti = 0; ti < T.cols - 1; ti += TILE) {
+        const i1 = Math.min(ti + TILE, T.cols - 1), j1 = Math.min(tj + TILE, T.rows - 1);
+        let lo = Infinity, hi = -Infinity, plain = true;
+        const first = (tj * T.cols + ti) * 3;
+        for (let j = tj; j <= j1; j++) {
+          for (let i = ti; i <= i1; i++) {
+            const k = j * T.cols + i;
+            lo = Math.min(lo, T.heights[k]);
+            hi = Math.max(hi, T.heights[k]);
+            if (plain && (Math.abs(col[k * 3] - col[first]) > 0.004 || Math.abs(col[k * 3 + 1] - col[first + 1]) > 0.004 || Math.abs(col[k * 3 + 2] - col[first + 2]) > 0.004)) plain = false;
+          }
+        }
+        const step = plain && hi === lo && (i1 - ti) % COARSE === 0 && (j1 - tj) % COARSE === 0 ? COARSE : 1;
+        const index: number[] = [];
+        for (let j = tj; j < j1; j += step) {
+          for (let i = ti; i < i1; i += step) {
+            const a = j * T.cols + i, b = a + step, c = a + step * T.cols, d = c + step;
+            index.push(a, c, b, b, c, d);
+          }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', position);
+        g.setAttribute('color', color);
+        g.setAttribute('normal', normal);
+        g.setIndex(index);
+        const x0 = T.x0 + ti * T.cell, x1 = T.x0 + i1 * T.cell, z0 = T.z0 + tj * T.cell, z1 = T.z0 + j1 * T.cell;
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3((x0 + x1) / 2, (lo + hi) / 20, (z0 + z1) / 2), Math.hypot(x1 - x0, z1 - z0, (hi - lo) / 10) / 2 + 0.5);
+        const mesh = new THREE.Mesh(g, ground);
+        mesh.receiveShadow = true;
+        mesh.castShadow = hi - lo > 4;
+        group.add(mesh);
+      }
+    }
   }
 
   // ---- Flat ground cover with crisp edges, where the ground really is flat. ----
@@ -294,11 +334,8 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     if (lake || out.empty) continue;
     (a.kind === 'park' || a.kind === 'grass' || a.kind === 'wood' ? meadow : paint).add(out.geometry(), AREA_COLOR[a.kind], 0, 0, 0);
   }
-  const lawns = meadow.build(gouache({ vertexColors: true, meadow: true }));
-  if (lawns) {
-    lawns.receiveShadow = true;
-    group.add(lawns);
-  }
+  const lawnMeshes = meadow.buildChunks(gouache({ vertexColors: true, meadow: true }), CHUNK * 2);
+  for (const m of lawnMeshes) m.receiveShadow = true;
 
   // ---- Roads, paths and the creek, as layered strips. ----
   const layers: Record<string, Tris> = {};
@@ -657,14 +694,13 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     [paint, gouache({ vertexColors: true })],
     [over, gouache({ vertexColors: true, hole: true })],
   ] as const) {
-    const mesh = batch.build(material);
-    if (!mesh) continue;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    for (const mesh of batch.buildChunks(material, CHUNK)) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
   }
-  const glow = kit.glow.build(gouache({ vertexColors: true, unlit: true }));
-  if (glow) group.add(glow);
+  for (const mesh of kit.glow.buildChunks(gouache({ vertexColors: true, unlit: true }), CHUNK)) group.add(mesh);
   const glint = kit.glint.build(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false }));
   if (glint) {
     glint.renderOrder = 1;
@@ -674,6 +710,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
 
   // People on the real sidewalks and the trail, drawn only near the cat.
   const people = new People({ seats, standers, walkways, walkers: 260, drawRadius: 140 });
+  for (const mesh of lawnMeshes) group.add(mesh);
   group.add(people.group);
 
   // The painting fades to paper just past the region's edge.
@@ -846,6 +883,8 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       for (const m of moving) m.update(dt, clock);
     },
     rides,
+    // At street level only people nearby are drawn; pulled back, people are too small to see at all.
+    setView: (span) => people.setDrawRadius(span > 260 ? 0 : THREE.MathUtils.clamp(span * 1.6, 70, 150)),
     route(fromX, fromZ, toX, toZ) {
       // The network is only worked out the first time a route is asked for.
       router ??= makeRouter(pack.roads);

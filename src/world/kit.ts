@@ -98,6 +98,47 @@ export class Batch {
     this.add(UNIT_WEDGE, color, x, y, z, { sx: width, sy: rise, sz: projection, ry });
   }
 
+  /**
+   * Like build, but cuts everything into square tiles of the given size, one mesh each, so that
+   * tiles outside the picture (and outside the shadow box) are skipped altogether.
+   */
+  buildChunks(material: THREE.Material, size: number): THREE.Mesh[] {
+    // Count the triangles that fall in each tile, then fill each tile's arrays in a second pass.
+    const tileOf = (x: number, z: number) => `${Math.floor(x / size)},${Math.floor(z / size)}`;
+    const counts = new Map<string, number>();
+    const each = (visit: (key: string, p: THREE.BufferAttribute, n: THREE.BufferAttribute, c: THREE.BufferAttribute, i: number) => void) => {
+      for (const part of this.parts) {
+        const p = part.attributes.position as THREE.BufferAttribute;
+        const n = part.attributes.normal as THREE.BufferAttribute;
+        const c = part.attributes.color as THREE.BufferAttribute;
+        for (let i = 0; i < p.count; i += 3) visit(tileOf((p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3, (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3), p, n, c, i);
+      }
+    };
+    each((key) => counts.set(key, (counts.get(key) ?? 0) + 1));
+    const tiles = new Map<string, { pos: Float32Array; nor: Float32Array; col: Float32Array; at: number }>();
+    for (const [key, triangles] of counts) tiles.set(key, { pos: new Float32Array(triangles * 9), nor: new Float32Array(triangles * 9), col: new Float32Array(triangles * 9), at: 0 });
+    each((key, p, n, c, i) => {
+      const t = tiles.get(key)!;
+      for (let v = 0; v < 3; v++, t.at += 3) {
+        t.pos[t.at] = p.getX(i + v); t.pos[t.at + 1] = p.getY(i + v); t.pos[t.at + 2] = p.getZ(i + v);
+        t.nor[t.at] = n.getX(i + v); t.nor[t.at + 1] = n.getY(i + v); t.nor[t.at + 2] = n.getZ(i + v);
+        t.col[t.at] = c.getX(i + v); t.col[t.at + 1] = c.getY(i + v); t.col[t.at + 2] = c.getZ(i + v);
+      }
+    });
+    for (const p of this.parts) p.dispose();
+    this.parts = [];
+    const meshes: THREE.Mesh[] = [];
+    for (const t of tiles.values()) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(t.pos, 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(t.nor, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(t.col, 3));
+      g.computeBoundingSphere();
+      meshes.push(new THREE.Mesh(g, material));
+    }
+    return meshes;
+  }
+
   build(material: THREE.Material): THREE.Mesh | null {
     if (this.parts.length === 0) return null;
     const geo = mergeGeometries(this.parts);

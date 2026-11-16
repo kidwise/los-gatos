@@ -173,9 +173,10 @@ export function dressLake(o: LakeOptions): void {
   const narrow = (i: number) => 5.5 + 2 * Math.sin(i * 0.27 + 2) + 1.2 * Math.sin(i * 0.081);
   band(water, SHALLOW, () => -1, wide, () => level + 0.012);
   band(water, SHALLOWEST, () => -1, narrow, () => level + 0.024);
-  const surface = water.build(gouache({ vertexColors: true, water: true }))!;
-  surface.receiveShadow = true;
-  o.group.add(surface);
+  for (const tile of water.buildChunks(gouache({ vertexColors: true, water: true }), 160)) {
+    tile.receiveShadow = true;
+    o.group.add(tile);
+  }
 
   // A broken line of foam where the water meets the land, and a strip of sand above it.
   band(paint, FOAM, () => -0.3, (i) => 0.25 + hash(i * 3 + 9) * 0.9, () => level + 0.036);

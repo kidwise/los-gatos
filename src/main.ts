@@ -45,7 +45,11 @@ async function start(): Promise<void> {
   // One warm sun. Its strength is PI so a fully lit surface measures exactly 1 in the paint shader.
   const sun = new THREE.DirectionalLight(0xffffff, Math.PI);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  // Phones get a smaller shadow map; it covers the same ground at half the sharpness.
+  const small = Math.min(window.innerWidth, window.innerHeight) < 600;
+  sun.shadow.mapSize.set(small ? 2048 : 4096, small ? 2048 : 4096);
+  // Shadows are redrawn on demand, not every frame: see aimSun.
+  sun.shadow.autoUpdate = false;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
@@ -116,10 +120,12 @@ async function start(): Promise<void> {
   const paper = makePaperPass();
   composer.addPass(paper);
 
+  // Picture sharpness, from 1 (full) downward. It is lowered automatically on devices that cannot keep up.
+  let quality = Number(params.get('quality') ?? 1);
   const resize = () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio, 2);
+    const dpr = Math.min(window.devicePixelRatio, 2) * quality;
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h);
     composer.setPixelRatio(dpr);
@@ -215,8 +221,11 @@ async function start(): Promise<void> {
 
   // Shadows are drawn only around the cat, in a box that widens as the camera pulls back.
   let shadowHalf = 0;
+  let shadowDrawn = -1;
+  let shadowTick = 0;
   const aimSun = () => {
-    const half = Math.max(56, rig.span * 0.75);
+    // Sized in coarse steps, so zooming does not redraw the shadows continuously.
+    const half = Math.max(64, Math.pow(2, Math.ceil(Math.log2(rig.span * 0.75))));
     if (half !== shadowHalf) {
       shadowHalf = half;
       const c = sun.shadow.camera;
@@ -226,12 +235,19 @@ async function start(): Promise<void> {
       c.far = half * 4 + 200;
       c.updateProjectionMatrix();
     }
-    // Move in whole shadow-map pixels so shadow edges do not shimmer as the cat walks.
+    // The shadow box moves in whole shadow-map pixels so shadow edges do not shimmer, and only once
+    // the cat has gone a good way from its middle, so most frames it stays put.
     const texel = (half * 2) / sun.shadow.mapSize.x;
-    const sx = Math.round(pos.x / texel) * texel;
-    const sz = Math.round(pos.z / texel) * texel;
-    sun.target.position.set(sx, 0, sz);
-    sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
+    if (Math.abs(pos.x - sun.target.position.x) > half * 0.3 || Math.abs(pos.z - sun.target.position.z) > half * 0.3 || half !== shadowDrawn) {
+      shadowDrawn = half;
+      const sx = Math.round(pos.x / texel) * texel;
+      const sz = Math.round(pos.z / texel) * texel;
+      sun.target.position.set(sx, 0, sz);
+      sun.position.set(sx, 0, sz).addScaledVector(SUN, shadowHalf * 2 + 100);
+      sun.shadow.needsUpdate = true;
+    }
+    // Things that move cast shadows too, so the map is refreshed a few times a second regardless.
+    if (++shadowTick % 3 === 0) sun.shadow.needsUpdate = true;
   };
 
   const regionTitles: Record<string, string> = {};
@@ -282,6 +298,18 @@ async function start(): Promise<void> {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
         journal: (action: 'camera' | 'draw' | 'meow') => journal?.debug(action),
         riding: () => !!riding,
+        info: () => {
+          // Count what the next frame draws, shadows included.
+          renderer.info.autoReset = false;
+          renderer.info.reset();
+          composer.render();
+          const out = { triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, quality };
+          renderer.info.autoReset = true;
+          return out;
+        },
+        renderer,
+        sun,
+        composer,
         tap: (x: number, z: number) => {
           const p = new THREE.Vector3(x, 0, z);
           controls.target = p;
@@ -370,6 +398,9 @@ async function start(): Promise<void> {
 
   const exitButton = document.getElementById('exit-btn') as HTMLButtonElement;
   let exitShown: World['exits'][number] | null = null;
+
+  let frames = 0;
+  let frameTime = 0;
 
   const timer = new THREE.Timer();
   renderer.setAnimationLoop((now) => {
@@ -522,6 +553,19 @@ async function start(): Promise<void> {
     }
     sound.update(dt, around, moveDir ? speed : 0);
     aimSun();
+    world.setView?.(rig.span);
+    // Keep an eye on the frame rate; if the device is struggling, soften the picture a step.
+    frames++;
+    frameTime += dt;
+    if (frameTime > 2.5) {
+      const rate = frames / frameTime;
+      frames = 0;
+      frameTime = 0;
+      if (rate < 40 && quality > 0.55 && !params.has('quality')) {
+        quality = Math.max(0.5, quality - 0.15);
+        resize();
+      }
+    }
     openHole(dt);
     composer.render();
     journal?.afterRender();

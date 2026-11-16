@@ -21,6 +21,8 @@ export interface World {
   /** Ground height under a point, for a walker currently at currentY (which picks bridge deck or below). */
   heightAt(x: number, z: number, currentY: number): number;
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void;
+  /** Tells the world how much of it is on screen (metres across), so it need not animate what cannot be seen. */
+  setView?(span: number): void;
   /** True when something walkable-over, like a bridge deck, is hiding a walker at this spot. */
   covered(pos: THREE.Vector3): boolean;
   /** A way along streets and paths between two points, as x, z pairs; null if there is none. */

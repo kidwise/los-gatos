@@ -331,6 +331,11 @@ export class People {
     return heard;
   }
 
+  /** People further than this from the cat are not drawn. */
+  setDrawRadius(radius: number): void {
+    this.drawRadius = radius;
+  }
+
   update(dt: number, cat: THREE.Vector3, catSpeed: number): void {
     this.catX = cat.x;
     this.catZ = cat.z;
