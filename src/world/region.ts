@@ -662,46 +662,78 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       stand(x, y + 0.15, z, 0, () => cedar(kit, unused, 0, 0));
       posts.push({ x, y, z, r: 0.55 });
     }
-    // On Sundays the farmers' market sets up round the plaza: stalls under canopies, heaped with
-    // produce and flowers, with people shopping. (`?market` shows it on any day.)
+    // On Sundays the farmers' market sets up on the street beside the plaza, which is closed to
+    // cars: two rows of stalls facing each other across the roadway, heaped with produce and
+    // flowers, with people shopping between them. (`?market` shows it on any day.)
     if (F.cedar && (new Date().getDay() === 0 || new URLSearchParams(location.search).has('market'))) {
       const [cx, , cz] = F.cedar;
       const CANOPY = [P.warmWhite, P.persimmon, P.sage, P.butter, P.warmWhite, P.slateBlue, P.blush, P.deepGreen];
       const GOODS = [[0xd94f3d, 0xf2c14e, 0x6f9a5b], [0xe87f8f, 0xb48ad6, 0xf4f0e6], [0xe0683f, 0xf2c14e, 0xd94f3d], [0x8db36a, 0x557f4f, 0xf4f0e6], [0xb9825e, 0xdcc878, 0xf2e5cd], [0xb48ad6, 0xe87f8f, 0xf2c14e]];
-      const STALLS = 9;
+      // The market street: Montebello Way if the map has it, otherwise the side street nearest the cedar.
+      const near = (r: Road) => {
+        let best = Infinity;
+        for (let i = 0; i < r.pts.length; i += 3) best = Math.min(best, Math.hypot(r.pts[i] - cx, r.pts[i + 2] - cz));
+        return best;
+      };
+      const streets = pack.roads.filter((r) => STREETS.has(r.kind) && !r.bridge && near(r) < 90);
+      const named = streets.filter((r) => r.name === 'Montebello Way');
+      const chosen = named.length ? named : streets.filter((r) => r.kind === 'residential' || r.kind === 'tertiary').sort((p, q) => near(p) - near(q)).slice(0, 1);
       let placed = 0;
-      for (let i = 0; i < 14 && placed < STALLS; i++) {
-        const a = (i / 14) * Math.PI * 2 + 0.3;
-        const x = cx + Math.cos(a) * 11.5, z = cz + Math.sin(a) * 11.5;
-        // Keep stalls on the grass and paving: off the roads and clear of the fountain.
-        if (offRoad(x, z) < 2.2 || (F.fountain && Math.hypot(F.fountain[0] - x, F.fountain[2] - z) < 5)) continue;
-        const y = terrainY(x, z);
-        const turn = -a + Math.PI / 2;
+      const stall = (x: number, z: number, fx: number, fz: number) => {
+        const y = terrainY(x, z) + 0.07;
         const goods = GOODS[placed % GOODS.length];
-        stand(x, y + 0.15, z, turn, () => {
+        const canopy = CANOPY[placed % CANOPY.length];
+        const n = placed;
+        stand(x, y + 0.15, z, Math.atan2(fx, fz), () => {
           // A trestle table with crates, heaped with whatever is in season, under a square canopy.
           paint.box(0x9a7758, 0, 0.78, 0, 2.6, 0.07, 1.1);
           for (const sx of [-1.1, 1.1]) paint.box(0x7a5a45, sx, 0.38, 0, 0.07, 0.76, 0.9);
-          paint.box(placed % 2 ? P.warmWhite : 0xe8d6ae, 0, 0.5, 0.56, 2.6, 0.6, 0.03);
+          paint.box(n % 2 ? P.warmWhite : 0xe8d6ae, 0, 0.5, 0.56, 2.6, 0.6, 0.03);
           for (let c = 0; c < 3; c++) {
             const bx = -0.85 + c * 0.85;
             paint.box(0xb9906a, bx, 0.92, 0, 0.72, 0.2, 0.8);
             for (let g = 0; g < 7; g++) paint.blob(goods[(c + g) % 3], bx + ((g % 3) - 1) * 0.2, 1.08 + (g > 3 ? 0.1 : 0), ((g % 2) - 0.5) * 0.36 + (g > 3 ? 0.1 : 0), 0.12, 0.11, 0.12);
           }
           for (const sx of [-1.45, 1.45]) for (const sz of [-0.9, 0.9]) paint.cyl(P.trim, sx, 1.3, sz, 0.035, 0.035, 2.6, 5);
-          paint.cone(CANOPY[placed % CANOPY.length], 0, 2.55, 0, Math.SQRT1_2, 0.7, 4, { ry: Math.PI / 4, sx: 3.3, sz: 2.2, flat: true });
-          paint.box(CANOPY[placed % CANOPY.length], 0, 2.47, 0, 3.3, 0.18, 2.2);
+          paint.cone(canopy, 0, 2.55, 0, Math.SQRT1_2, 0.7, 4, { ry: Math.PI / 4, sx: 3.3, sz: 2.2, flat: true });
+          paint.box(canopy, 0, 2.47, 0, 3.3, 0.18, 2.2);
           // Buckets of cut flowers at one end.
           paint.cyl(P.steel, 1.75, 0.2, 0.3, 0.17, 0.14, 0.4, 8);
-          for (let g = 0; g < 5; g++) paint.blob([0xe87f8f, 0xf2c14e, 0xf4f0e6, 0xb48ad6][(g + placed) % 4], 1.75 + Math.cos(g * 1.3) * 0.12, 0.52 + (g % 2) * 0.08, 0.3 + Math.sin(g * 1.3) * 0.12, 0.09);
+          for (let g = 0; g < 5; g++) paint.blob([0xe87f8f, 0xf2c14e, 0xf4f0e6, 0xb48ad6][(g + n) % 4], 1.75 + Math.cos(g * 1.3) * 0.12, 0.52 + (g % 2) * 0.08, 0.3 + Math.sin(g * 1.3) * 0.12, 0.09);
         });
-        posts.push({ x, y, z, r: 1.7 });
-        // The stallholder behind the table, and a shopper or two in front.
-        const fx = Math.cos(a), fz = Math.sin(a);
-        standers.push({ x: x - fx * 1.25, y: y + 0.05, z: z - fz * 1.25, heading: Math.atan2(fx, fz) });
-        standers.push({ x: x + fx * 1.5 - fz * 0.5, y: y + 0.05, z: z + fz * 1.5 + fx * 0.5, heading: Math.atan2(-fx, -fz) });
-        if (placed % 2 === 0) standers.push({ x: x + fx * 1.6 + fz * 0.7, y: y + 0.05, z: z + fz * 1.6 - fx * 0.7, heading: Math.atan2(-fx, -fz) + 0.3 });
+        posts.push({ x, y, z, r: 1.6 });
+        // The stallholder behind the table, and a shopper or two in the aisle.
+        standers.push({ x: x - fx * 1.2, y, z: z - fz * 1.2, heading: Math.atan2(fx, fz) });
+        standers.push({ x: x + fx * 1.35 - fz * 0.5, y, z: z + fz * 1.35 + fx * 0.5, heading: Math.atan2(-fx, -fz) });
+        if (placed % 3 === 0) standers.push({ x: x + fx * 1.4 + fz * 0.8, y, z: z + fz * 1.4 - fx * 0.8, heading: Math.atan2(-fx, -fz) + 0.3 });
         placed++;
+      };
+      for (const r of chosen) {
+        const count = r.pts.length / 3;
+        // Stalls stand at each kerb with their backs to it, every other point along, staggered.
+        const out = r.width / 2 - 1.25;
+        for (let i = 1; i < count - 1 && placed < 22; i++) {
+          const a = (i - 1) * 3, b = (i + 1) * 3;
+          const len = Math.hypot(r.pts[b] - r.pts[a], r.pts[b + 2] - r.pts[a + 2]) || 1;
+          const tx = (r.pts[b] - r.pts[a]) / len, tz = (r.pts[b + 2] - r.pts[a + 2]) / len;
+          const px = r.pts[i * 3], pz = r.pts[i * 3 + 2];
+          if (Math.hypot(px - cx, pz - cz) > 85) continue;
+          const side = i % 2 ? 1 : -1;
+          stall(px - tz * side * out, pz + tx * side * out, tz * side, -tx * side);
+        }
+        // "Street closed" trestles across each end.
+        for (const end of [0, count - 1]) {
+          const a = Math.max(0, end - 1) * 3, b = Math.min(count - 1, end + 1) * 3;
+          const ex = r.pts[end * 3], ez = r.pts[end * 3 + 2];
+          const turn = Math.atan2(-(r.pts[b + 2] - r.pts[a + 2]), r.pts[b] - r.pts[a]) + Math.PI / 2;
+          stand(ex, terrainY(ex, ez) + 0.22, ez, turn, () => {
+            for (const sx of [-1.6, 1.6]) {
+              paint.box(P.warmWhite, sx, 0.75, 0, 2.4, 0.22, 0.06);
+              for (let k = -2; k <= 2; k++) paint.box(P.persimmon, sx + k * 0.48, 0.75, 0.035, 0.22, 0.22, 0.02);
+              for (const leg of [-1, 1]) paint.box(P.steel, sx + leg * 1.0, 0.36, 0, 0.06, 0.72, 0.5);
+            }
+          });
+        }
       }
     }
     if (F.fountain) {
