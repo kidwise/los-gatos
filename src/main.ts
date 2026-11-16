@@ -252,6 +252,7 @@ async function start(): Promise<void> {
     if (++shadowTick % 3 === 0) sun.shadow.needsUpdate = true;
   };
 
+  let restarting = false;
   const regionTitles: Record<string, string> = {};
   // The journal: things found along the way, and the sketchbook. Only on the real map.
   let journal: Journal | null = null;
@@ -289,6 +290,17 @@ async function start(): Promise<void> {
         sound.meow();
       },
       onFound: () => sound.chime(),
+      onRestart: () => {
+        // Forget what was found, drawn and where the cat was, then open the game afresh.
+        restarting = true;
+        Journal.forget();
+        try {
+          localStorage.removeItem(PLACE_KEY);
+        } catch {
+          // Nothing was saved.
+        }
+        location.href = location.pathname;
+      },
     });
     scene.add(journal.group);
   }
@@ -370,7 +382,7 @@ async function start(): Promise<void> {
 
   // Remember where the cat is, every few seconds and when the page is put away.
   const remember = () => {
-    if (!regionId || riding || opening) return;
+    if (!regionId || riding || opening || restarting) return;
     try {
       localStorage.setItem(PLACE_KEY, JSON.stringify({ region: regionId, x: Math.round(pos.x * 10) / 10, z: Math.round(pos.z * 10) / 10 }));
     } catch {

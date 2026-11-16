@@ -33,4 +33,13 @@ check('"Draw it" files a page named after the street', pages.length === 1 && /Av
 await page.click('#book-btn');
 await page.waitForTimeout(500);
 check('the journal opens and lists the beret as worn', (await shown(page, 'book')) && /wearing/.test(await text(page, 'book')));
+
+// Restarting from the journal, which asks twice.
+const restart = page.locator('#book button', { hasText: 'Restart the game' });
+await restart.click();
+check('Restart asks to be tapped again', /Tap again/.test(await text(page, 'book')) && ((await saved(page)).found ?? []).length > 0);
+await page.locator('#book button', { hasText: 'Tap again' }).click();
+await page.waitForSelector('canvas');
+await page.waitForTimeout(4000);
+check('a second tap erases progress and returns to the title', (await shown(page, 'intro')) && ((await saved(page)).found ?? []).length === 0);
 await done();

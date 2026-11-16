@@ -54,6 +54,8 @@ export interface JournalOptions {
   onMeow: () => void;
   /** Something was found for the first time. */
   onFound: () => void;
+  /** The player asked to start the whole game over. */
+  onRestart: () => void;
 }
 
 const SEE = 55; // rings are invisible until the cat is this close
@@ -459,6 +461,23 @@ export class Journal {
         this.openBook();
       };
     });
+    // Starting over, asked for twice so it cannot happen by a slip of the finger.
+    const again = section('Start over');
+    const note = el('p', '', again);
+    note.textContent = 'Forget everything found and drawn, and begin again under the plaza cedar.';
+    const restart = el('button', '', again);
+    restart.className = 'chip';
+    restart.textContent = 'Restart the game';
+    restart.onclick = () => {
+      if (restart.dataset.sure) {
+        this.o.onRestart();
+        return;
+      }
+      restart.dataset.sure = '1';
+      restart.classList.add('warn');
+      restart.textContent = 'Tap again to erase everything';
+      note.textContent = 'This cannot be undone. Close the journal to keep your progress.';
+    };
     b.classList.add('on');
   }
 }

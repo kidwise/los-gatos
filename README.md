@@ -24,6 +24,7 @@ Los Gatos is a polished small town tucked beneath the Santa Cruz Mountains, and 
 - Ride the steam train and the carousel in Oak Meadow, and take a rowing boat out on Vasona Lake.
 - Visit the farmers' market by the plaza, which sets up on Sundays.
 - Reach Vasona Dam for the closing view back to the mountains.
+- Start over at any time from the bottom of the journal.
 
 ## Controls
 
