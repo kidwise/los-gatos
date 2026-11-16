@@ -101,6 +101,7 @@ Other checks:
 |---|---|
 | `npm run build` | Fails on any type error |
 | `npm run perf` | Reports frame rate and drawing load for six views |
+| `node scripts/sound-check.mjs` | Measures how loud the mix is in seven situations (add `SOUND=effects` to leave out the music) |
 | `node scripts/shot.mjs "<address ending>" <output.png> [width] [height]` | Saves a screenshot of the running game |
 | `node scripts/cat-sheet.mjs <output.png> [poses…]` | Saves a contact sheet of the cat's poses and gaits, frame by frame |
 
@@ -109,7 +110,7 @@ Other checks:
 - **TypeScript, Vite and Three.js.** There is no game engine and no server; the published game is static files.
 - **One paint shader** (`src/style/gouache.ts`) draws every surface, and a final pass (`src/style/paperPass.ts`) adds paper grain and edge effects.
 - **Models are made in code.** Buildings, people, the cat, boats and trees are assembled from simple shapes, with no imported 3D files.
-- **Sound is made in code** with the Web Audio API, as a stand-in until real recordings replace it.
+- **Sound and music are made in code** with the Web Audio API (`src/game/sound.ts`): a generative score that changes with where you are, plus the sounds of each place and of the cat. They are stand-ins tuned by measurement, until real recordings replace them.
 - **Progress is saved in the browser** (local storage), so there are no accounts.
 
 ### Folders

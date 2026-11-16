@@ -19,8 +19,11 @@ await find('plaza');
 check('the plaza ring teaches Meow, and its button appears', await shown(page, 'meow-btn'));
 
 await page.click('#sound-btn');
-check('the sound button switches sound off', (await text(page, 'sound-btn')) === 'Sound off');
+check('the sound button first turns the music off', (await text(page, 'sound-btn')) === 'Music off');
 await page.click('#sound-btn');
+check('then all sound off', (await text(page, 'sound-btn')) === 'Sound off');
+await page.click('#sound-btn');
+check('then everything back on', (await text(page, 'sound-btn')) === 'Sound on');
 
 await load(page, 'region=main-street&x=-360&z=-190');
 await page.click('#cam-btn');

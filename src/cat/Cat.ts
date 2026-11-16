@@ -265,6 +265,11 @@ export class Cat {
     if (this.outfits[item]) this.outfits[item].visible = on;
   }
 
+  /** How settled the cat is, from 0 (up and about) to 1 (sitting or loafing). */
+  get resting(): number {
+    return Math.max(this.sit, this.loaf);
+  }
+
   /** Sit down straight away, without the usual wait. */
   sitNow(): void {
     this.idleTime = 8;

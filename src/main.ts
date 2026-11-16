@@ -8,7 +8,7 @@ import { Cat, CAT_SCALE, type DebugPose } from './cat/Cat';
 import { CameraRig } from './game/cameraRig';
 import { Controls } from './game/controls';
 import { Journal } from './game/journal';
-import { Sound, type Ambience } from './game/sound';
+import { Sound, type Ambience, type Moment } from './game/sound';
 import { gouacheUniforms } from './style/gouache';
 import { makePaperPass } from './style/paperPass';
 import { P } from './style/palette';
@@ -204,13 +204,19 @@ async function start(): Promise<void> {
   window.addEventListener('pointerdown', wake);
   window.addEventListener('keydown', wake);
   const soundButton = document.getElementById('sound-btn') as HTMLButtonElement;
-  const showSound = () => (soundButton.textContent = sound.muted ? 'Sound off' : 'Sound on');
+  const showSound = () => (soundButton.textContent = sound.label);
+  // One button steps through everything, no music, and silence.
   soundButton.onclick = () => {
-    sound.toggleMute();
+    sound.cycle();
     showSound();
   };
   showSound();
-  let around: Ambience = { water: 0, traffic: 0, town: 0, green: 0, train: 0, carousel: 0 };
+  let around: Ambience = { water: 0, lake: 0, traffic: 0, town: 0, market: 0, green: 0, grass: 0, train: 0, carousel: 0 };
+  const hearing: Moment = { speed: 0, resting: 0, rowing: false, dusk: 0, height: 0, pan: { water: 0, train: 0, carousel: 0 } };
+  const earRight = new THREE.Vector3(), earUp = new THREE.Vector3();
+  let rowing = false;
+  // Every button gives a soft tick.
+  document.addEventListener('click', (e) => (e.target as HTMLElement).closest?.('button') && sound.tap());
   let listenIn = 0;
 
   const place = (ease: number) => {
@@ -290,6 +296,8 @@ async function start(): Promise<void> {
         sound.meow();
       },
       onFound: () => sound.chime(),
+      onMoment: () => sound.swell(),
+      onSketch: () => sound.sketch(),
       onRestart: () => {
         // Forget what was found, drawn and where the cat was, then open the game afresh.
         restarting = true;
@@ -312,6 +320,8 @@ async function start(): Promise<void> {
         where: () => ({ x: pos.x, y: pos.y, z: pos.z }),
         journal: (action: 'camera' | 'draw' | 'meow') => journal?.debug(action),
         riding: () => !!riding,
+        sound: () => ({ ...sound.levels(), mode: sound.mode, around }),
+        wakeSound: () => sound.start(),
         info: () => {
           // Count what the next frame draws, shadows included.
           renderer.info.autoReset = false;
@@ -431,10 +441,14 @@ async function start(): Promise<void> {
       if (keys) {
         controls.target = null;
         riding.steer(dt, keys.x, keys.z, pace);
+        rowing = true;
       } else if (controls.target) {
         const dx = controls.target.x - pos.x, dz = controls.target.z - pos.z;
         const d = Math.hypot(dx, dz);
-        if (d > 1.5) riding.steer(dt, dx / d, dz / d, pace * Math.min(1, 0.25 + d / 6));
+        if (d > 1.5) {
+          riding.steer(dt, dx / d, dz / d, pace * Math.min(1, 0.25 + d / 6));
+          rowing = true;
+        }
         else if (controls.arriving) controls.target = null;
       }
     }
@@ -549,6 +563,7 @@ async function start(): Promise<void> {
       const s = journal!.summary;
       document.getElementById('ending-tally')!.textContent = `${s.found} of ${s.total} things found · ${s.pages} ${s.pages === 1 ? 'sketch' : 'sketches'} drawn`;
       endingCard.classList.add('on');
+      sound.ending();
     }
     // The pin grows with the view so it stays the same size on screen.
     const far = THREE.MathUtils.smoothstep(rig.span, 30, 50);
@@ -564,8 +579,22 @@ async function start(): Promise<void> {
     if (listenIn <= 0) {
       listenIn = 0.25;
       around = world.ambience(pos);
+      // Which side each sound lies on, as the camera sees it.
+      rig.groundAxes(earRight, earUp);
+      const from = world.sources?.(pos) ?? {};
+      for (const key of ['water', 'train', 'carousel'] as const) {
+        const at = from[key];
+        const dx = at ? at[0] - pos.x : 0, dz = at ? at[1] - pos.z : 0;
+        hearing.pan[key] = at ? (dx * earRight.x + dz * earRight.z) / (Math.hypot(dx, dz) + 6) : 0;
+      }
     }
-    sound.update(dt, around, moveDir ? speed : 0);
+    hearing.speed = moveDir ? speed : 0;
+    hearing.resting = cat.resting;
+    hearing.rowing = rowing;
+    hearing.dusk = dusk;
+    hearing.height = THREE.MathUtils.smoothstep(rig.span, 60, 320);
+    rowing = false;
+    sound.update(dt, around, hearing);
     aimSun();
     world.setView?.(rig.span);
     // Keep an eye on the frame rate; if the device is struggling, soften the picture a step.

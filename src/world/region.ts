@@ -969,10 +969,30 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     start = { x: main.pts[0] - (dx / len) * 14, z: main.pts[2] - (dz / len) * 14 + 4, heading: Math.atan2(dx, dz) };
   }
 
-  // Points along open water and along the freeway, for judging how near each is.
-  const waterPts: number[] = [];
-  for (const w of pack.water) for (let i = 0; i < w.pts.length; i += 3) waterPts.push(w.pts[i], w.pts[i + 2]);
-  for (const a of pack.areas) if (a.kind === 'lake') for (let i = 0; i < a.ring.length; i += 8) waterPts.push(a.ring[i], a.ring[i + 1]);
+  // Points along the creek, the lake shore and the freeway, for judging how near each is; and the
+  // grassed areas, for telling grass from paving underfoot.
+  const creekPts: number[] = [];
+  for (const w of pack.water) for (let i = 0; i < w.pts.length; i += 3) creekPts.push(w.pts[i], w.pts[i + 2]);
+  const lakePts: number[] = [];
+  for (const a of pack.areas) if (a.kind === 'lake') for (let i = 0; i < a.ring.length; i += 4) lakePts.push(a.ring[i], a.ring[i + 1]);
+  const nearest = (pts: number[], pos: THREE.Vector3) => {
+    let d = Infinity, x = 0, z = 0;
+    for (let i = 0; i < pts.length; i += 2) {
+      const dd = Math.hypot(pts[i] - pos.x, pts[i + 1] - pos.z);
+      if (dd < d) [d, x, z] = [dd, pts[i], pts[i + 1]];
+    }
+    return { d, x, z };
+  };
+  const lawns = pack.areas
+    .filter((a) => a.kind === 'park' || a.kind === 'grass' || a.kind === 'wood')
+    .map((a) => {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (let i = 0; i < a.ring.length; i += 2) {
+        x0 = Math.min(x0, a.ring[i]); x1 = Math.max(x1, a.ring[i]);
+        z0 = Math.min(z0, a.ring[i + 1]); z1 = Math.max(z1, a.ring[i + 1]);
+      }
+      return { ring: a.ring, x0, x1, z0, z1 };
+    });
   const freewayPts: number[] = [];
   for (const r of pack.roads) {
     if (r.kind === 'motorway') for (let i = 0; i < r.pts.length; i += 3) freewayPts.push(r.pts[i], r.pts[i + 2]);
@@ -1083,19 +1103,29 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     ambience(pos) {
-      const nearest = (pts: number[]) => {
-        let best = Infinity;
-        for (let i = 0; i < pts.length; i += 2) best = Math.min(best, Math.abs(pts[i] - pos.x) + Math.abs(pts[i + 1] - pos.z));
-        return best;
-      };
       const town = Math.min(1, people.countNear(pos.x, pos.z, 35) / 14);
+      const creek = nearest(creekPts, pos), shore = nearest(lakePts, pos);
+      const onGrass = lawns.some((l) => pos.x >= l.x0 && pos.x <= l.x1 && pos.z >= l.z0 && pos.z <= l.z1 && insideRing(pos.x, pos.z, l.ring));
+      const cedarAt = pack.props?.cedar;
       return {
-        water: 1 - THREE.MathUtils.smoothstep(nearest(waterPts), 6, 60),
-        traffic: 1 - THREE.MathUtils.smoothstep(nearest(freewayPts), 12, 130),
+        water: 1 - THREE.MathUtils.smoothstep(creek.d, 6, 55),
+        lake: 1 - THREE.MathUtils.smoothstep(shore.d, 8, 90),
+        traffic: 1 - THREE.MathUtils.smoothstep(nearest(freewayPts, pos).d, 12, 130),
         town,
+        market: marketDay && cedarAt ? 1 - THREE.MathUtils.smoothstep(Math.hypot(cedarAt[0] - pos.x, cedarAt[2] - pos.z), 20, 75) : 0,
         green: Math.max(0.12, 1 - town * 1.6),
+        grass: onGrass ? 1 : 0,
         train: train ? 1 - THREE.MathUtils.smoothstep(Math.hypot(train.at.x - pos.x, train.at.z - pos.z), 12, 130) : 0,
         carousel: moving.reduce((a, m) => (m.sound === 'carousel' ? Math.max(a, 1 - THREE.MathUtils.smoothstep(Math.hypot(m.x - pos.x, m.z - pos.z), 8, 90)) : a), 0),
+      };
+    },
+    sources(pos) {
+      const creek = nearest(creekPts, pos);
+      const organ = moving.find((m) => m.sound === 'carousel');
+      return {
+        water: creek.d < 60 ? [creek.x, creek.z] : undefined,
+        train: train ? [train.at.x, train.at.z] : undefined,
+        carousel: organ ? [organ.x, organ.z] : undefined,
       };
     },
     placeName(x, z) {

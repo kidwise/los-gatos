@@ -37,6 +37,8 @@ export interface World {
   placeName(x: number, z: number): string;
   /** What surrounds this point, for sound. */
   ambience(pos: THREE.Vector3): Ambience;
+  /** Where the things that make directional sound are, if any are near: x and z of each. */
+  sources?(pos: THREE.Vector3): { water?: [number, number]; train?: [number, number]; carousel?: [number, number] };
   /** Things that once stood here, which draw themselves in pencil at their sketch spot. */
   ghosts: Ghost[];
 }
@@ -134,7 +136,7 @@ export function cornerWorld(): World {
     spots: [],
     charm: (pos) => people.call(pos.x, pos.z, 11),
     placeName: () => 'The Corner',
-    ambience: (pos) => ({ water: 0, traffic: 0, town: Math.min(1, 0.4 + people.countNear(pos.x, pos.z, 30) / 12), green: 0.35, train: 0, carousel: 0 }),
+    ambience: (pos) => ({ water: 0, lake: 0, traffic: 0, town: Math.min(1, 0.4 + people.countNear(pos.x, pos.z, 30) / 12), market: 0, green: 0.35, grass: pos.x > 16 && pos.z > 14 ? 1 : 0, train: 0, carousel: 0 }),
     ghosts: [],
   };
 }

@@ -54,6 +54,10 @@ export interface JournalOptions {
   onMeow: () => void;
   /** Something was found for the first time. */
   onFound: () => void;
+  /** A story or a view has opened up. */
+  onMoment: () => void;
+  /** A sketch was drawn. */
+  onSketch: () => void;
   /** The player asked to start the whole game over. */
   onRestart: () => void;
 }
@@ -279,6 +283,7 @@ export class Journal {
     const view = this.o.view(f.id);
     if (view) {
       this.moment = { id: f.id, t: 0, settled: false, long: view.pitch !== undefined };
+      this.o.onMoment();
       this.o.controls.target = null;
       this.focus.set(view.x, view.y, view.z);
       this.spanBefore = this.o.rig.span;
@@ -340,6 +345,7 @@ export class Journal {
     // Turn the view to pencil; the sketch is taken a couple of frames later, once it has been drawn that way.
     gouacheUniforms.uPainted.value = 0;
     this.captureIn = 3;
+    this.o.onSketch();
   }
 
   private leaveFinder(): void {
