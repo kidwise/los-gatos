@@ -764,7 +764,8 @@ export async function loadRegion(id: string, from: string | null = null): Promis
             paint.box(0xf3ecdd, 1.75, 0.62, 1.53, 0.42, 0.55, 0.01);
           }
         });
-        posts.push({ x, y, z, r: 1.55 });
+        // Small enough to leave a way through between neighbouring stalls.
+        posts.push({ x, y, z, r: 1.15 });
         // The stallholder behind the table, and shoppers in the aisle. Cooked food draws a queue.
         standers.push({ x: x - fx * 0.2, y, z: z - fz * 0.2, heading: Math.atan2(fx, fz) });
         const shoppers = kind === 'food' ? 3 : n % 3 === 0 ? 2 : 1;
@@ -1060,7 +1061,21 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     route(fromX, fromZ, toX, toZ) {
       // The network is only worked out the first time a route is asked for.
       router ??= makeRouter(pack.roads);
-      return router(fromX, fromZ, toX, toZ);
+      // A straight walk is clear if it crosses no building wall or shoreline.
+      const clear = (ax: number, az: number, bx: number, bz: number) => {
+        const rx = bx - ax, rz = bz - az;
+        for (const w of walls) {
+          if (!Number.isNaN(w.y)) continue;
+          const sx = w.bx - w.ax, sz = w.bz - w.az;
+          const den = rx * sz - rz * sx;
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((w.ax - ax) * sz - (w.az - az) * sx) / den;
+          const u = ((w.ax - ax) * rz - (w.az - az) * rx) / den;
+          if (t > 0 && t < 1 && u > 0 && u < 1) return false;
+        }
+        return true;
+      };
+      return router(fromX, fromZ, toX, toZ, clear);
     },
     spots: pack.spots ?? [],
     charm: (pos) => people.call(pos.x, pos.z, 11),

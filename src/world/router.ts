@@ -6,7 +6,9 @@
 const WALKABLE = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street', 'service', 'pedestrian', 'cycleway', 'path', 'footway', 'sidewalk', 'crossing', 'steps', 'track']);
 const CELL = 24;
 
-export type Router = (fromX: number, fromZ: number, toX: number, toZ: number) => number[] | null;
+/** A test for whether the straight walk from one point to another is free of walls. */
+export type Clear = (ax: number, az: number, bx: number, bz: number) => boolean;
+export type Router = (fromX: number, fromZ: number, toX: number, toZ: number, clear?: Clear) => number[] | null;
 
 export function makeRouter(roads: { kind: string; pts: number[] }[]): Router {
   const xs: number[] = [];
@@ -61,10 +63,25 @@ export function makeRouter(roads: { kind: string; pts: number[] }[]): Router {
   const cost = new Float64Array(n);
   const came = new Int32Array(n);
 
-  return (fromX, fromZ, toX, toZ) => {
+  return (fromX, fromZ, toX, toZ, clear) => {
     const start = nearest(fromX, fromZ);
-    const goal = nearest(toX, toZ);
-    if (start < 0 || goal < 0) return null;
+    const closest = nearest(toX, toZ);
+    if (start < 0 || closest < 0) return null;
+    // The route may end at any path point near the tap from which the tap can be walked to
+    // directly: this stops the cat being led to the wrong side of a building.
+    const ends = new Set<number>();
+    if (clear) {
+      const cx = Math.floor(toX / CELL), cz = Math.floor(toZ / CELL);
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          for (const id of cells.get((cx + dx) * 8192 + cz + dz) ?? []) {
+            if (Math.hypot(xs[id] - toX, zs[id] - toZ) < 45 && clear(xs[id], zs[id], toX, toZ)) ends.add(id);
+          }
+        }
+      }
+    }
+    if (ends.size === 0) ends.add(closest);
+    let goal = -1;
     cost.fill(Infinity);
     came.fill(-1);
     cost[start] = 0;
@@ -98,16 +115,19 @@ export function makeRouter(roads: { kind: string; pts: number[] }[]): Router {
     };
     while (heap.length) {
       const [, at] = pop();
-      if (at === goal) break;
+      if (ends.has(at)) {
+        goal = at;
+        break;
+      }
       for (const next of links[at]) {
         const c = cost[at] + Math.hypot(xs[next] - xs[at], zs[next] - zs[at]);
         if (c >= cost[next]) continue;
         cost[next] = c;
         came[next] = at;
-        push([c + Math.hypot(xs[goal] - xs[next], zs[goal] - zs[next]), next]);
+        push([c + Math.hypot(toX - xs[next], toZ - zs[next]), next]);
       }
     }
-    if (goal !== start && came[goal] < 0) return null;
+    if (goal < 0) return null;
     const path: number[] = [];
     for (let at = goal; at >= 0; at = came[at]) path.unshift(xs[at], zs[at]);
     return path;

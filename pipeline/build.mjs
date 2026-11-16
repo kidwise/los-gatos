@@ -700,6 +700,23 @@ const props = { lamps: [], planters: [], benches: [], cars: [], boats: [], picni
   }
 }
 
+function ringHitAny(x, z, ring) {
+  let hit = false;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    if (ring[i + 1] > z !== ring[j + 1] > z && x < ((ring[j] - ring[i]) * (z - ring[i + 1])) / (ring[j + 1] - ring[i + 1]) + ring[i]) hit = !hit;
+  }
+  return hit;
+}
+// The game's camera looks from the south-east, so anything close behind a building, to its
+// north-west, cannot be seen. A ring must never be put there.
+const hiddenFromCamera = (x, z) =>
+  buildings.some((b) => {
+    if (Math.hypot(b.cx - x, b.cz - z) > 90) return false;
+    const reach = (b.levels * 3.6 + 3) * 1.45 * Math.SQRT1_2;
+    for (let t = 1; t <= reach; t += 1.25) if (ringHitAny(x + t, z + t, b.ring)) return true;
+    return false;
+  });
+
 // ---------- Sketch spots, from the hand-authored overlay ----------
 const spots = [];
 const overlayPath = `data/overlays/${id}.json`;
@@ -726,8 +743,26 @@ if (existsSync(overlayPath)) {
       else if (el?.type === 'way') {
         const pts = pointsOf(el);
         at = [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
-        // Stand outside a building, not in the middle of it: step out to the nearest street or path.
-        if (el.tags.building) {
+        const landmark = buildings.find((b) => b.id === el.id && b.hero && b.face !== undefined);
+        if (landmark) {
+          // A landmark's ring goes in front of its entrance: out through the front wall and a few steps on.
+          // The front wall is the long stretch of footprint that most nearly faces the street.
+          const fx = Math.sin(landmark.face), fz = Math.cos(landmark.face);
+          const R = landmark.ring;
+          let front = null, score = -Infinity;
+          for (let i = 0; i < R.length; i += 2) {
+            const j = (i + 2) % R.length;
+            const ex = R[j] - R[i], ez = R[j + 1] - R[i + 1];
+            const len = Math.hypot(ex, ez);
+            if (len < 5) continue;
+            // Footprints are wound so that outside is on the right of each edge.
+            const nx = ez / len, nz = -ex / len;
+            const sc = (nx * fx + nz * fz) * Math.min(len, 30);
+            if (sc > score) [front, score] = [{ x: (R[i] + R[j]) / 2, z: (R[i + 1] + R[j + 1]) / 2, nx, nz }, sc];
+          }
+          at = front ? [front.x + front.nx * 8, front.z + front.nz * 8] : [landmark.cx + fx * 20, landmark.cz + fz * 20];
+        } else if (el.tags.building) {
+          // Stand outside a building, not in the middle of it: step out to the nearest street or path.
           let best = null, bestD = Infinity;
           for (const l of lines) {
             if (l.kind === 'motorway' || l.kind === 'motorway_link' || l.kind === 'service') continue;
@@ -822,20 +857,20 @@ if (existsSync(overlayPath)) {
         }
         return false;
       });
-    if (blocked(at[0], at[1]) || inLake(at[0], at[1])) {
+    if (blocked(at[0], at[1]) || inLake(at[0], at[1]) || hiddenFromCamera(at[0], at[1])) {
       let best = null, bestD = Infinity;
       for (const l of lines) {
         if (l.kind === 'motorway' || l.kind === 'motorway_link' || l.bridge) continue;
         for (const p of resample(l.pts, 2)) {
           const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
-          if (d < bestD && !blocked(p[0], p[1]) && !inLake(p[0], p[1])) [best, bestD] = [p, d];
+          if (d < bestD && !blocked(p[0], p[1]) && !inLake(p[0], p[1]) && !hiddenFromCamera(p[0], p[1])) [best, bestD] = [p, d];
         }
       }
       if (!best) {
         console.warn(`  spot "${s.id}": no clear ground nearby`);
         continue;
       }
-      console.log(`  spot "${s.id}" was inside a building; moved ${bestD.toFixed(0)} m to clear ground`);
+      console.log(`  spot "${s.id}" was in or hidden behind a building; moved ${bestD.toFixed(0)} m to clear ground in view`);
       at = best;
     }
     spots.push({ id: s.id, kind: s.kind, item: s.item, title: s.title, blurb: s.blurb, lookout: s.lookout, ending: s.ending, x: r2(at[0]), z: r2(at[1]) });
