@@ -168,59 +168,132 @@ function lettering(k: Kit, frame: THREE.Matrix4, text: string, style: SignStyle,
 }
 
 /**
- * The Los Gatos Theatre: an Art Deco picture house with a lit marquee and an upright blade sign.
- * Stylized from general knowledge of the building, not from photographs.
+ * The Los Gatos Theatre, after photographs of the building as it stands today: a white
+ * streamlined front with a stepped tower, a tall cream blade sign lettered LOS / GATOS / THEATRE
+ * in navy, a white marquee with a reader board, and a black-tiled entrance with a curved ticket
+ * booth and a silver cat. Proportions are judged by eye from those photographs, not measured.
  */
 const theatre: HeroBuilder = (k, ring, base, face) => {
   const p = k.paint;
   const { w, d, frame } = frontOn(k, ring, base, face);
-  const H = 9.5;
-  const WALL = P.cream, DECO = P.oxblood;
+  const WHITE = 0xf6f3ec;
+  const SHADE = 0xe6e2da;
+  const TAUPE = 0x8f8780;
+  const CREAM = 0xf3ead2;
+  const NAVY = 0x25355e;
+  const TILE = 0x23242b;
+  const SILVER = 0xc9ccd2;
+  const BLUE = 0x5b7bea;
+  const H = 9.2;
+  /** Lettering on a face turned by ry about the vertical. */
+  const letter = (text: string, x: number, y: number, z: number, ry: number, maxWidth: number, height: number, ink = NAVY) => {
+    const sign = makeSign(text, 'deco', ink, maxWidth, height);
+    sign.applyMatrix4(new THREE.Matrix4().makeRotationY(ry).setPosition(x, y, z).premultiply(frame));
+    k.signs.add(sign);
+  };
 
-  p.box(WALL, 0, H / 2, 0, w * 2, H, d * 2);
+  // The hall behind, and the white front with a band of shadow lines.
+  p.box(WHITE, 0, H / 2, 0, w * 2, H, d * 2);
   p.box(P.roof, 0, H + 0.03, 0, w * 2 - 0.6, 0.06, d * 2 - 0.6);
-  // Stepped Deco parapet and fluted piers on the front.
-  p.box(WALL, 0, H + 0.5, d - 0.35, w * 2, 1.0, 0.7);
-  p.box(WALL, 0, H + 1.4, d - 0.35, w * 1.3, 0.8, 0.7);
-  p.box(WALL, 0, H + 2.1, d - 0.35, w * 0.7, 0.6, 0.7);
-  p.box(DECO, 0, H + 1.02, d + 0.02, w * 2, 0.12, 0.06);
-  for (let i = 0; i < 6; i++) {
-    const x = ((i + 0.5) / 6 - 0.5) * 2 * w;
-    if (Math.abs(x) < 0.9) continue;
-    p.box(P.trim, x, 6.6, d + 0.04, 0.34, 5.0, 0.1);
-    p.box(P.glass, x + 0.75, 6.8, d + 0.02, 0.5, 2.6, 0.05);
+  p.box(WHITE, 0, H + 0.35, d - 0.3, w * 2, 0.7, 0.6);
+  for (const y of [4.9, 8.75]) p.box(SHADE, 0, y, d + 0.03, w * 2, 0.12, 0.06);
+
+  // Tall windows across the upper floor, to the right of the tower.
+  const winX0 = -w * 0.12, winX1 = w - 0.7;
+  p.box(0x3d4a58, (winX0 + winX1) / 2, 6.85, d + 0.03, winX1 - winX0, 2.9, 0.08);
+  k.glow.box(P.backdropButter, (winX0 + winX1) / 2, 5.9, d + 0.08, winX1 - winX0 - 0.3, 0.8, 0.03);
+  for (let x = winX0; x <= winX1 + 0.01; x += (winX1 - winX0) / Math.round((winX1 - winX0) / 0.95)) p.box(WHITE, x, 6.85, d + 0.1, 0.12, 2.9, 0.1);
+  p.box(WHITE, (winX0 + winX1) / 2, 8.35, d + 0.1, winX1 - winX0, 0.1, 0.1);
+  k.glint.box(0xffffff, (winX0 + winX1) / 2 - 0.8, 6.85, d + 0.17, 0.5, 2.8, 0.005);
+
+  // The stepped tower, rising in three setbacks with vertical fins.
+  const tx = -w * 0.42;
+  p.box(WHITE, tx, 6.2, d - 0.5, 3.6, 12.4, 2.6);
+  p.box(WHITE, tx, 12.9, d - 0.6, 2.7, 1.0, 2.2);
+  p.box(WHITE, tx, 13.7, d - 0.7, 1.8, 0.7, 1.8);
+  for (const fx of [-1.3, -0.45, 0.45, 1.3]) p.box(SHADE, tx + fx, 9.6, d + 0.84, 0.16, 5.4, 0.1);
+  p.box(SHADE, tx, 12.42, d + 0.82, 3.7, 0.1, 0.12);
+
+  // The blade sign: a tall cream panel in a taupe frame, standing out from the tower, read from both sides.
+  const bz = d + 2.05, top = 14.6, foot = 5.5, bw = 0.5, bd = 1.75;
+  p.box(TAUPE, tx, (top + foot) / 2, bz, bw, top - foot, bd);
+  p.cyl(TAUPE, tx, top, bz, bd / 2, bd / 2, bw, 16, { rz: Math.PI / 2 });
+  p.box(TAUPE, tx, foot - 0.12, bz, bw + 0.5, 0.24, bd + 0.5);
+  p.cyl(SILVER, tx, top + bd / 2 + 0.5, bz, 0.03, 0.03, 1.0, 5);
+  p.ball(SILVER, tx, top + bd / 2 + 1.0, bz, 0.07);
+  const rows = ['G', 'A', 'T', 'O', 'S'];
+  const step = 1.42;
+  const firstY = top - 1.25;
+  for (const side of [-1, 1]) {
+    const fx = tx + side * (bw / 2 + 0.012);
+    const ry = (side * Math.PI) / 2;
+    // The panel is lit from within, so it stays cream on its shaded side too.
+    k.glow.box(CREAM, tx + side * (bw / 2 + 0.004), (top + foot) / 2 + 0.1, bz, 0.01, top - foot - 0.3, bd - 0.28);
+    letter('LOS', fx + side * 0.01, top + 0.05, bz, ry, bd - 0.7, 0.34);
+    rows.forEach((ch, i) => letter(ch, fx + side * 0.01, firstY - i * step, bz, ry, bd - 0.42, 1.2));
+    letter('THEATRE', fx + side * 0.01, foot + 0.42, bz, ry, bd - 0.36, 0.3);
+  }
+  // Silver bars run back from between the letters to the tower.
+  for (let i = 0; i <= rows.length; i++) {
+    const y = firstY + step / 2 - i * step;
+    p.box(SILVER, tx, y, bz - 0.2, bw + 0.16, 0.07, bd + 0.5);
+    p.box(SILVER, tx + 0.9, y, d + 1.0, 1.9, 0.06, 0.06);
   }
 
-  // Marquee: a deep canopy edged in light, with the name across its front.
-  const MZ = 2.6;
-  p.box(DECO, 0, 3.75, d + MZ / 2, w * 1.7, 0.9, MZ);
-  p.box(P.brass, 0, 4.24, d + MZ / 2, w * 1.74, 0.1, MZ + 0.08);
-  p.box(P.brass, 0, 3.27, d + MZ / 2, w * 1.74, 0.08, MZ + 0.08);
-  k.glow.box(P.lampGlow, 0, 3.2, d + MZ / 2, w * 1.6, 0.05, MZ - 0.3);
-  lettering(k, frame, 'Los Gatos', 'caps', P.trim, 0, 3.75, d + MZ + 0.03, w * 1.5, 0.62);
-  const bulbs = Math.round(w * 1.7 / 0.6);
-  for (let i = 0; i <= bulbs; i++) k.glow.ball(P.lampGlow, (i / bulbs - 0.5) * w * 1.7, 3.24, d + MZ + 0.02, 0.07);
-
-  // Upright blade sign above the marquee, lettered down its length.
-  p.box(DECO, 0, 8.3, d + 0.6, 1.2, 7.4, 0.55);
-  p.box(P.brass, 0, 12.1, d + 0.6, 1.5, 0.22, 0.7);
-  'THEATRE'.split('').forEach((ch, i) => lettering(k, frame, ch, 'caps', P.lampGlow, 0, 11.2 - i * 0.9, d + 0.89, 0.9, 0.82));
-  for (let i = 0; i < 9; i++) {
-    for (const s of [-1, 1]) k.glow.ball(P.lampGlow, s * 0.52, 5.0 + i * 0.82, d + 0.89, 0.06);
+  // The marquee: a white canopy coming to a blunt point, with a reader board on each angled face.
+  const mx = w * 0.1, reach = 3.1, half = Math.min(w - 0.4, 4.6);
+  const board = Math.hypot(half, reach - 0.7);
+  const slant = Math.atan2(reach - 0.7, half);
+  p.box(WHITE, mx, 3.55, d + 0.35, half * 2, 1.5, 0.7);
+  for (const side of [-1, 1]) {
+    const cx = mx + (side * half) / 2, cz = d + 0.7 + (reach - 0.7) / 2;
+    p.box(WHITE, cx, 3.55, cz, board, 1.5, 0.3, side * slant);
+    p.box(NAVY, cx, 2.76, cz, board + 0.04, 0.12, 0.36, side * slant);
+    p.box(SILVER, cx, 4.33, cz, board + 0.04, 0.07, 0.36, side * slant);
+    // Lettering sits just proud of the board, turned to face the same way.
+    const nx = Math.sin(side * slant) * 0.17, nz = Math.cos(side * slant) * 0.17;
+    letter('Now playing', cx + nx, 3.92, cz + nz, side * slant, board - 1.0, 0.36, TILE);
+    letter(side < 0 ? 'A wandering' : 'The cats of the corner', cx + nx, 3.35, cz + nz, side * slant, board - 0.8, 0.38, TILE);
   }
+  // Blue light washes down from under the canopy.
+  k.glow.box(BLUE, mx, 2.78, d + 1.2, half * 1.5, 0.05, 1.9);
+  for (let i = 0; i < 5; i++) k.glow.ball(P.lampGlow, mx + (i - 2) * half * 0.32, 2.74, d + 1.5, 0.08);
 
-  // Under the canopy: ticket booth, doors and lit poster cases.
-  p.box(P.navy, 0, 1.3, d + 0.7, 1.5, 2.6, 1.3);
-  k.glow.box(P.backdropButter, 0, 1.65, d + 1.36, 1.0, 0.9, 0.04);
-  for (const s of [-1, 1]) {
-    p.box(P.inkGreen, s * 2.0, 1.25, d + 0.04, 1.5, 2.5, 0.1);
-    k.glow.box(P.backdropButter, s * 2.0, 1.6, d + 0.1, 1.1, 1.2, 0.04);
-    p.box(P.brass, s * 2.0, 1.2, d + 0.13, 0.06, 0.5, 0.04);
-    if (w > 4.6) {
-      p.box(P.brass, s * (w - 1.2), 1.7, d + 0.04, 1.3, 1.9, 0.08);
-      k.glow.box([P.backdropBlush, P.backdropSky][s < 0 ? 0 : 1], s * (w - 1.2), 1.7, d + 0.09, 1.1, 1.7, 0.04);
+  // The entrance: black tile below, glass doors either side of a curved white ticket booth.
+  p.box(TILE, 0, 0.55, d + 0.04, w * 2 - 0.2, 1.1, 0.1);
+  p.cyl(WHITE, mx, 1.55, d + 0.5, 0.95, 0.95, 3.1, 18);
+  p.cyl(TILE, mx, 0.55, d + 0.5, 1.0, 1.0, 1.1, 18);
+  k.glow.box(P.backdropButter, mx, 1.95, d + 1.44, 0.8, 0.9, 0.03);
+  p.box(SILVER, mx, 1.95, d + 1.46, 0.92, 1.02, 0.02);
+  for (const side of [-1, 1]) {
+    const dx = mx + side * 2.25;
+    p.box(SILVER, dx, 1.4, d + 0.07, 1.9, 2.7, 0.08);
+    k.glow.box(0xf2dcae, dx, 1.4, d + 0.12, 1.7, 2.5, 0.03);
+    p.box(SILVER, dx, 1.4, d + 0.15, 0.06, 2.5, 0.03);
+    // A sunburst etched on the glass.
+    for (let r = 0; r < 4; r++) p.box(0xfaf3df, dx + side * (0.15 + r * 0.14), 1.0 + r * 0.42, d + 0.16, 0.05, 1.5 - r * 0.2, 0.02);
+    // Poster cases further along.
+    if (w > 5.4) {
+      const px = mx + side * Math.min(w - 1.3, 4.35);
+      p.box(WHITE, px, 2.0, d + 0.07, 1.35, 1.95, 0.08);
+      k.glow.box([P.backdropBlush, P.backdropSky][side < 0 ? 0 : 1], px, 2.0, d + 0.12, 1.1, 1.7, 0.03);
     }
   }
+  // The silver cat that sits by the ticket window.
+  p.cyl(SILVER, mx, 0.42, d + 1.62, 0.13, 0.2, 0.62, 10);
+  p.ball(SILVER, mx, 0.86, d + 1.62, 0.15, 0.16, 0.14);
+  for (const s of [-1, 1]) p.cone(SILVER, mx + s * 0.08, 0.97, d + 1.62, 0.05, 0.12, 4);
+
+  // Terrazzo forecourt in sweeping bands of grey, blue and cream.
+  p.box(0xb9bcc6, mx, 0.045, d + 1.7, half * 2, 0.05, 3.3);
+  p.box(0x7f8fb0, mx - half * 0.35, 0.05, d + 1.9, half * 0.5, 0.055, 2.9, 0.5);
+  p.box(CREAM, mx + half * 0.2, 0.052, d + 2.0, half * 0.36, 0.056, 2.9, -0.4);
+  p.box(TILE, mx + half * 0.55, 0.054, d + 1.8, 0.16, 0.058, 3.2, -0.4);
+
+  // A black gooseneck lamp on the tower.
+  p.box(TILE, tx + 2.2, 5.3, d + 0.5, 0.06, 0.06, 1.0);
+  k.glow.ball(P.lampGlow, tx + 2.2, 5.12, d + 1.0, 0.13);
+  p.cone(TILE, tx + 2.2, 5.12, d + 1.0, 0.24, 0.22, 8);
   done(k);
 };
 

@@ -119,7 +119,7 @@ export function seeded(seed: number): () => number {
   };
 }
 
-export type SignStyle = 'italic' | 'caps';
+export type SignStyle = 'italic' | 'caps' | 'deco';
 
 /** Lettering resolution. Scenes with many signs lower this to save memory. */
 export const signOptions = { px: 96 };
@@ -129,9 +129,15 @@ export function makeSign(text: string, style: SignStyle, ink: number, maxWidth: 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
   const px = signOptions.px;
-  const font = style === 'italic' ? `italic 600 ${px}px "Playfair Display", Georgia, serif` : `500 ${px * 0.72}px "Playfair Display", Georgia, serif`;
-  const label = style === 'caps' ? text.toUpperCase() : text;
-  const spacing = style === 'caps' ? px * 0.16 : 0;
+  // 'deco' is a heavy geometric sans, for Art Deco signs; it uses whatever such face the device has.
+  const font =
+    style === 'italic'
+      ? `italic 600 ${px}px "Playfair Display", Georgia, serif`
+      : style === 'deco'
+        ? `800 ${px * 0.9}px Futura, "Avenir Next", "Century Gothic", "Trebuchet MS", sans-serif`
+        : `500 ${px * 0.72}px "Playfair Display", Georgia, serif`;
+  const label = style === 'italic' ? text : text.toUpperCase();
+  const spacing = style === 'caps' ? px * 0.16 : style === 'deco' ? px * 0.06 : 0;
 
   ctx.font = font;
   let width = 0;
