@@ -20,14 +20,15 @@ export type DebugPose = 'stand' | 'walk' | 'trot' | 'gallop' | 'sit' | 'loaf' | 
  */
 
 // ---- Anatomy ----
-const SHOULDER_Z = 0.112;
-const HIP_Z = -0.112;
-const SHOULDER_Y = 0.226;
-const HIP_Y = 0.25;
-const PAW_Y = 0.016;
-const UPPER_ARM = 0.09, FOREARM = 0.148;
-const THIGH = 0.108, SHANK = 0.114, HOCK = 0.08;
-const TAIL_POINTS = 10, TAIL_STEP = 0.036;
+// Proportions are a storybook cat's, not a real one's: a short round body, a big head and stubby legs.
+const SHOULDER_Z = 0.082;
+const HIP_Z = -0.085;
+const SHOULDER_Y = 0.172;
+const HIP_Y = 0.186;
+const PAW_Y = 0.02;
+const UPPER_ARM = 0.07, FOREARM = 0.112;
+const THIGH = 0.084, SHANK = 0.088, HOCK = 0.06;
+const TAIL_POINTS = 10, TAIL_STEP = 0.034;
 
 // ---- Gaits ----
 // Where in the stride each leg steps (left hind, left fore, right hind, right fore), for walk, trot, gallop.
@@ -40,8 +41,8 @@ const OFFSETS = [
 /** Share of the stride each paw spends on the ground. */
 const DUTY = [0.66, 0.5, 0.32];
 /** How far a paw travels along the ground in one step, in world metres. */
-const STEP = [0.3, 0.36, 0.44];
-const LIFT = [0.03, 0.045, 0.07];
+const STEP = [0.22, 0.27, 0.34];
+const LIFT = [0.028, 0.04, 0.06];
 /** The legs go no faster than this many strides a second; beyond it the cat simply flies further. */
 const MAX_CADENCE = 4.2;
 
@@ -180,7 +181,7 @@ export class Cat {
   private tail = Array.from({ length: TAIL_POINTS }, () => new THREE.Vector3());
   private tailWas = Array.from({ length: TAIL_POINTS }, () => new THREE.Vector3());
   private tailLocal = Array.from({ length: TAIL_POINTS }, () => new THREE.Vector3());
-  private tailR = Array.from({ length: TAIL_POINTS }, (_, i) => lerp(0.021, 0.012, i / (TAIL_POINTS - 1)));
+  private tailR = Array.from({ length: TAIL_POINTS }, (_, i) => lerp(0.03, 0.019, i / (TAIL_POINTS - 1)));
   private tailReady = false;
 
   private time = 0;
@@ -248,10 +249,10 @@ export class Cat {
     this.tailTip = part(sphere, white, this.rig);
 
     // Head.
-    this.head.scale.setScalar(1.12);
+    this.head.scale.setScalar(1.5);
     this.rig.add(this.head);
-    part(sphere, dark, this.head, 0, 0, 0, 0.078, 0.07, 0.074);
-    for (const s of [-1, 1]) part(sphere, dark, this.head, s * 0.046, -0.02, 0.022, 0.04, 0.036, 0.04);
+    part(sphere, dark, this.head, 0, 0, 0, 0.082, 0.074, 0.076);
+    for (const s of [-1, 1]) part(sphere, dark, this.head, s * 0.05, -0.022, 0.02, 0.042, 0.038, 0.042);
     part(sphere, white, this.head, 0, -0.026, 0.05, 0.04, 0.029, 0.036);
     part(sphere, white, this.head, 0, -0.045, 0.03, 0.03, 0.022, 0.03);
     part(sphere, pink, this.head, 0, -0.013, 0.085, 0.011, 0.008, 0.008);
@@ -261,9 +262,9 @@ export class Cat {
       eye.position.set(s * 0.034, 0.012, 0.06);
       eye.rotation.y = s * 0.32;
       this.head.add(eye);
-      part(sphere, iris, eye, 0, 0, 0, 0.019, 0.02, 0.008).castShadow = false;
-      part(sphere, pupil, eye, 0, -0.001, 0.004, 0.0125, 0.0145, 0.006).castShadow = false;
-      part(sphere, glint, eye, -0.005, 0.006, 0.008, 0.0042, 0.0042, 0.003).castShadow = false;
+      part(sphere, iris, eye, 0, 0, 0, 0.021, 0.023, 0.008).castShadow = false;
+      part(sphere, pupil, eye, 0, -0.001, 0.004, 0.0145, 0.0168, 0.006).castShadow = false;
+      part(sphere, glint, eye, -0.006, 0.007, 0.008, 0.005, 0.005, 0.003).castShadow = false;
       this.eyes.push(eye);
 
       // Ears that can turn and flatten, with a pink inside.
@@ -286,8 +287,8 @@ export class Cat {
 
     // Collar and bell, which follow the neck.
     this.rig.add(this.neck);
-    part(new THREE.TorusGeometry(0.052, 0.012, 6, 18), collarRed, this.neck);
-    part(sphere, brass, this.neck, 0, -0.058, 0.004, 0.016);
+    part(new THREE.TorusGeometry(0.05, 0.0065, 6, 20), collarRed, this.neck);
+    part(sphere, brass, this.neck, 0, -0.054, 0.004, 0.0105);
 
     // Wardrobe: pieces the cat finds around town. All start put away.
     const navy = gouache({ color: P.navy, local: true, painted: true });
@@ -297,6 +298,7 @@ export class Cat {
     const beret = new THREE.Group();
     beret.position.set(0.014, 0.068, -0.008);
     beret.rotation.set(-0.1, 0, -0.28);
+    beret.scale.setScalar(0.86);
     this.head.add(beret);
     part(sphere, navy, beret, 0, 0, 0, 0.066, 0.021, 0.062);
     part(sphere, navy, beret, 0, 0.021, 0, 0.007);
@@ -320,8 +322,8 @@ export class Cat {
 
     const neckerchief = new THREE.Group();
     this.neck.add(neckerchief);
-    part(new THREE.TorusGeometry(0.058, 0.019, 6, 16), red, neckerchief, 0, 0, 0.006);
-    const flap = part(new THREE.ConeGeometry(0.055, 0.095, 3), red, neckerchief, 0, -0.085, 0.012);
+    part(new THREE.TorusGeometry(0.052, 0.011, 6, 16), red, neckerchief, 0, 0, 0.006);
+    const flap = part(new THREE.ConeGeometry(0.036, 0.06, 3), red, neckerchief, 0, -0.07, 0.012);
     flap.rotation.set(0, 0, Math.PI);
     flap.scale.z = 0.4;
 
@@ -337,11 +339,11 @@ export class Cat {
           front,
           side,
           offsets: OFFSETS[(side > 0 ? 2 : 0) + (front ? 1 : 0)],
-          upper: front ? bone(0.027, UPPER_ARM, dark) : bone(0.035, THIGH, dark),
-          lower: front ? bone(0.02, FOREARM, dark) : bone(0.023, SHANK, dark),
-          hock: front ? null : bone(0.016, HOCK, white),
-          paw: part(sphere, white, this.rig, 0, 0, 0, 0.026, 0.017, 0.034),
-          blade: part(sphere, dark, this.rig, 0, 0, 0, front ? 0.036 : 0.05, front ? 0.05 : 0.058, front ? 0.044 : 0.06),
+          upper: front ? bone(0.036, UPPER_ARM, dark) : bone(0.046, THIGH, dark),
+          lower: front ? bone(0.03, FOREARM, dark) : bone(0.032, SHANK, dark),
+          hock: front ? null : bone(0.026, HOCK, white),
+          paw: part(sphere, white, this.rig, 0, 0, 0, 0.036, 0.022, 0.044),
+          blade: part(sphere, dark, this.rig, 0, 0, 0, front ? 0.05 : 0.066, front ? 0.058 : 0.07, front ? 0.054 : 0.074),
         });
       }
     });
@@ -443,27 +445,27 @@ export class Cat {
 
     let shoulderY = SHOULDER_Y - crouch + bob * m + frontLift + flight;
     let hipY = HIP_Y - crouch - bob * m + hindLift + flight;
-    shoulderY = lerp(lerp(shoulderY, 0.222, sit), 0.084, loaf) - groom * 0.012;
-    hipY = lerp(lerp(hipY, 0.09, sit), 0.082, loaf);
+    shoulderY = lerp(lerp(shoulderY, 0.17, sit), 0.07, loaf) - groom * 0.01;
+    hipY = lerp(lerp(hipY, 0.074, sit), 0.068, loaf);
     const shoulderZ = SHOULDER_Z - gather * 0.016 - sit * 0.012;
     const hipZ = HIP_Z + gather * 0.024 + sit * 0.022;
     const sway = Math.sin(phase * TAU) * 0.007 * m * (gw + gt * 0.5);
 
     // ---- Spine ----
     const G = this.guide;
-    const arch = 0.03 + gather * 0.03 + sit * 0.012 - loaf * 0.012;
-    G[1].set(-sway, hipY + 0.034, hipZ);
-    G[3].set(sway, shoulderY + 0.044, shoulderZ);
-    G[0].set(-sway, hipY + 0.012 - down * 0.02, hipZ - 0.058);
+    const arch = 0.016 + gather * 0.026 + sit * 0.012 - loaf * 0.008;
+    G[1].set(-sway, hipY + 0.05, hipZ);
+    G[3].set(sway, shoulderY + 0.06, shoulderZ);
+    G[0].set(-sway, hipY + 0.03 - down * 0.02, hipZ - 0.06);
     G[2].set(0, (G[1].y + G[3].y) / 2 + arch, (hipZ + shoulderZ) / 2);
-    const neckLift = 0.05 + sit * 0.008 + loaf * 0.012 - gg * m * 0.022;
-    G[4].set(sway, G[3].y + neckLift, shoulderZ + 0.062 + gg * m * 0.02);
-    G[5].set(sway * 0.5, G[4].y + neckLift * 0.85, shoulderZ + 0.108 + gg * m * 0.034);
+    const neckLift = 0.03 + sit * 0.008 + loaf * 0.01 - gg * m * 0.014;
+    G[4].set(sway, G[3].y + neckLift, shoulderZ + 0.055 + gg * m * 0.014);
+    G[5].set(sway * 0.5, G[4].y + neckLift * 0.8, shoulderZ + 0.095 + gg * m * 0.024);
     for (const p of G) curve(p);
 
     // Lay sixteen skin points along a smooth curve through the six guides.
-    const RX = [0.04, 0.071, 0.07, 0.066, 0.047, 0.04];
-    const RY = [0.046, 0.078, 0.076, 0.077, 0.052, 0.043];
+    const RX = [0.06, 0.1, 0.104, 0.098, 0.078, 0.06];
+    const RY = [0.064, 0.104, 0.106, 0.104, 0.082, 0.062];
     const haunch = 1 + down * 0.24;
     for (let i = 0; i < 16; i++) {
       const u = (i / 15) * 5;
@@ -480,7 +482,7 @@ export class Cat {
     }
     this.body.update(this.spine, this.spineRx, this.spineRy);
     this.rump.position.copy(this.spine[0]);
-    this.rump.scale.set(this.spineRx[0], this.spineRy[0], 0.045);
+    this.rump.scale.set(this.spineRx[0], this.spineRy[0], 0.06);
     this.rig.rotation.z = -this.lean;
 
     // ---- Legs ----
@@ -497,22 +499,22 @@ export class Cat {
         along = lerp(-0.5, 0.5, smooth(swing));
         up = Math.sin(swing * Math.PI);
       }
-      const track = (front ? 0.044 : 0.052) * (1 - gg * m * 0.35);
+      const track = (front ? 0.058 : 0.066) * (1 - gg * m * 0.3);
       // The shoulder joint sits ahead of the paw, so the elbow tucks back and the forearm stands upright.
-      const centre = front ? shoulderZ - 0.02 : hipZ - 0.012;
-      joint.set(side * (front ? 0.044 : 0.05), front ? shoulderY : hipY, front ? shoulderZ + 0.014 : hipZ);
+      const centre = front ? shoulderZ - 0.012 : hipZ - 0.01;
+      joint.set(side * (front ? 0.058 : 0.064), front ? shoulderY : hipY, front ? shoulderZ + 0.01 : hipZ);
       target.set(side * track, PAW_Y + up * lift * m, centre + along * step * m);
 
       if (front) {
         // Sitting, the forelegs stand straight; loafing, they fold forward under the chest.
-        target.z = lerp(target.z, shoulderZ + 0.12, loaf);
-        target.x = lerp(target.x, side * 0.04, loaf);
+        target.z = lerp(target.z, shoulderZ + 0.1, loaf);
+        target.x = lerp(target.x, side * 0.05, loaf);
         if (side > 0 && groom > 0) {
           // Washing: the right paw comes up to the mouth and works in small strokes.
           const lick = Math.sin(time * 9) * 0.012;
-          target.x = lerp(target.x, 0.018, groom);
-          target.y = lerp(target.y, shoulderY + 0.05 + lick, groom);
-          target.z = lerp(target.z, shoulderZ + 0.105, groom);
+          target.x = lerp(target.x, 0.03, groom);
+          target.y = lerp(target.y, shoulderY + 0.07 + lick, groom);
+          target.z = lerp(target.z, shoulderZ + 0.125, groom);
         }
         curve(joint);
         curve(target);
@@ -520,13 +522,13 @@ export class Cat {
         reach(joint, target, UPPER_ARM, FOREARM, pole, mid, end);
         span(leg.upper, joint, mid);
         span(leg.lower, mid, end);
-        leg.paw.position.copy(end).y -= 0.004;
-        leg.paw.position.z += 0.012;
-        leg.blade.position.copy(joint).y += 0.012;
+        leg.paw.position.copy(end).y += 0.002;
+        leg.paw.position.z += 0.014;
+        leg.blade.position.copy(joint).y += 0.014;
       } else {
         // Sitting or loafing, the hind feet rest flat, forward of the hips, with the knees up beside the body.
-        target.x = lerp(target.x, side * 0.072, down);
-        target.z = lerp(target.z, hipZ + lerp(0.105, 0.085, loaf), down);
+        target.x = lerp(target.x, side * 0.095, down);
+        target.z = lerp(target.z, hipZ + lerp(0.09, 0.075, loaf), down);
         curve(joint);
         curve(target);
         // The long hind foot: heel high as the paw lifts and trails, flat on the ground at rest.
@@ -537,8 +539,8 @@ export class Cat {
         span(leg.upper, joint, mid);
         span(leg.lower, mid, end);
         span(leg.hock!, end, target);
-        leg.paw.position.copy(target).y -= 0.004;
-        leg.paw.position.z += 0.014;
+        leg.paw.position.copy(target).y += 0.002;
+        leg.paw.position.z += 0.016;
         leg.blade.position.copy(joint).y += 0.004;
         leg.blade.position.x += side * down * 0.012;
       }
@@ -555,15 +557,15 @@ export class Cat {
     this.headDip = ease(this.headDip, groom * 0.55 + gg * m * 0.1 + loaf * 0.06, 6, dt);
     const nod = groom * Math.sin(time * 9) * 0.07;
     this.head.position.copy(G[5]);
-    this.head.position.y += 0.016 - groom * 0.012;
-    this.head.position.z += 0.03 * Math.cos(bend * 1.2);
-    this.head.position.x += 0.03 * Math.sin(bend * 1.2);
+    this.head.position.y += 0.03 - groom * 0.012;
+    this.head.position.z += 0.05 * Math.cos(bend * 1.2);
+    this.head.position.x += 0.05 * Math.sin(bend * 1.2);
     this.head.rotation.set(this.headDip + nod, this.headYaw, -this.lean * 0.5, 'YXZ');
 
-    this.neck.position.copy(this.spine[13]);
-    _t.subVectors(this.spine[14], this.spine[12]).normalize();
+    this.neck.position.copy(this.spine[12]);
+    _t.subVectors(this.spine[13], this.spine[11]).normalize();
     this.neck.quaternion.setFromUnitVectors(_a.set(0, 0, 1), _t);
-    this.neck.scale.setScalar(this.spineRy[13] / 0.05);
+    this.neck.scale.setScalar(this.spineRy[12] / 0.047);
 
     // ---- Tail ----
     this.swishTail(dt, m, gw + gt, gg, down, heading);
