@@ -917,8 +917,11 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       for (let i = 0; i < b.pts.length - 3; i += 3) {
         const ax = b.pts[i], az = b.pts[i + 2], dx = b.pts[i + 3] - ax, dz = b.pts[i + 5] - az;
         const len2 = dx * dx + dz * dz;
-        const t = len2 === 0 ? 0 : ((x - ax) * dx + (z - az) * dz) / len2;
-        if (t < 0 || t > 1) continue;
+        let t = len2 === 0 ? 0 : ((x - ax) * dx + (z - az) * dz) / len2;
+        // The deck ends squarely at the bridge's two ends, but where two stretches join, a little
+        // overlap is allowed: otherwise rounding leaves a hairline gap to fall through.
+        if (t < (i === 0 ? 0 : -0.08) || t > (i === b.pts.length - 6 ? 1 : 1.08)) continue;
+        t = Math.max(0, Math.min(1, t));
         if (Math.hypot(x - (ax + dx * t), z - (az + dz * t)) <= b.half) return { bridge: n, y: b.pts[i + 1] + (b.pts[i + 4] - b.pts[i + 1]) * t, along: (i / 3 + t) / segments };
       }
     }

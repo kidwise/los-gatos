@@ -55,6 +55,7 @@ Other commands:
 | `npm run typecheck` | Checks the TypeScript without building |
 | `npm run build` | Type-checks and builds the game into `dist/` |
 | `npm run preview` | Serves the built game locally |
+| `npm test` | Runs the play tests (see Testing) |
 
 ### Useful addresses while developing
 
@@ -71,13 +72,33 @@ Add these to the local address:
 
 ## Testing
 
-There is no unit-test suite yet. The checks are:
+The tests play the real game in a browser and check what happens. They need Google Chrome installed and the development server running.
 
-- `npm run build`, which fails on any type error.
-- `node scripts/check-rings.mjs`, which walks the cat to every ring in every region and reports any it cannot reach.
-- `node scripts/shot.mjs "<address ending>" <output.png> [width] [height]`, which saves a screenshot of the running game.
+```sh
+npm run dev      # in one terminal
+npm test         # in another
+```
 
-The two scripts need the development server running and Google Chrome installed.
+`npm test` runs every test and takes about ten minutes. To run some of them, name them: `npm test bridge rides`.
+
+| Test | What it checks |
+|---|---|
+| `bridge` | The cat crosses the Main Street bridge on the deck, is stopped by the railing, and can pass underneath |
+| `rings` | Every ring in every region can be reached by tapping it from a nearby street |
+| `rides` | The carousel, the train and the rowing boat can each be boarded, carry the cat, and be left |
+| `story` | The opening, resuming where you left off, and the ending at the dam |
+| `travel` | Walking between regions, trotting and dashing speeds, and map travel to a found place |
+| `journal` | Wearing what is found, the Meow trick, the sound button, and sketching a view |
+
+Tests live in `tests/`, one file each, with shared set-up in `tests/helper.mjs`. If the development server is on a different port, set `GAME_URL`, for example `GAME_URL=http://localhost:5174/ npm test`. The tests rely on a helper the game only exposes in development, so they cannot be run against the published game.
+
+Other checks:
+
+| Command | What it does |
+|---|---|
+| `npm run build` | Fails on any type error |
+| `npm run perf` | Reports frame rate and drawing load for six views |
+| `node scripts/shot.mjs "<address ending>" <output.png> [width] [height]` | Saves a screenshot of the running game |
 
 ## How it is built
 
@@ -100,7 +121,8 @@ The two scripts need the development server running and Google Chrome installed.
 | `data/raw/` | Pinned OpenStreetMap snapshots |
 | `data/overlays/` | Hand-written lists of things to find in each region |
 | `public/regions/` | The built region packs the game loads |
-| `scripts/` | Screenshot and ring-reach checks |
+| `tests/` | Play tests that drive the game in a browser |
+| `scripts/` | Screenshot and performance tools |
 
 ### The map pipeline
 
@@ -132,4 +154,6 @@ This is an artist's impression, not a survey.
 - Lettering is set in [Playfair Display](https://fonts.google.com/specimen/Playfair+Display).
 - Built with [Three.js](https://threejs.org) and [Vite](https://vite.dev).
 
-No licence has been chosen for the game's own code and artwork yet.
+## Licence
+
+The game's code and artwork are released under the [MIT Licence](LICENSE). The map data keeps its own licence, above.
