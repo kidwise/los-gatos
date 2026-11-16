@@ -249,10 +249,12 @@ export class Cat {
     this.tailTip = part(sphere, white, this.rig);
 
     // Head.
-    this.head.scale.setScalar(1.5);
+    // The head is about as wide as the body, as on the first cat.
+    this.head.scale.setScalar(1.22);
     this.rig.add(this.head);
     part(sphere, dark, this.head, 0, 0, 0, 0.082, 0.074, 0.076);
-    for (const s of [-1, 1]) part(sphere, dark, this.head, s * 0.05, -0.022, 0.02, 0.042, 0.038, 0.042);
+    // Only a hint of cheek.
+    for (const s of [-1, 1]) part(sphere, dark, this.head, s * 0.04, -0.02, 0.022, 0.034, 0.03, 0.036);
     part(sphere, white, this.head, 0, -0.026, 0.05, 0.04, 0.029, 0.036);
     part(sphere, white, this.head, 0, -0.045, 0.03, 0.03, 0.022, 0.03);
     part(sphere, pink, this.head, 0, -0.013, 0.085, 0.011, 0.008, 0.008);
@@ -298,7 +300,7 @@ export class Cat {
     const beret = new THREE.Group();
     beret.position.set(0.014, 0.068, -0.008);
     beret.rotation.set(-0.1, 0, -0.28);
-    beret.scale.setScalar(0.86);
+    beret.scale.setScalar(0.95);
     this.head.add(beret);
     part(sphere, navy, beret, 0, 0, 0, 0.066, 0.021, 0.062);
     part(sphere, navy, beret, 0, 0.021, 0, 0.007);
@@ -557,15 +559,15 @@ export class Cat {
     this.headDip = ease(this.headDip, groom * 0.55 + gg * m * 0.1 + loaf * 0.06, 6, dt);
     const nod = groom * Math.sin(time * 9) * 0.07;
     this.head.position.copy(G[5]);
-    this.head.position.y += 0.03 - groom * 0.012;
-    this.head.position.z += 0.05 * Math.cos(bend * 1.2);
-    this.head.position.x += 0.05 * Math.sin(bend * 1.2);
+    this.head.position.y += 0.022 - groom * 0.012;
+    this.head.position.z += 0.04 * Math.cos(bend * 1.2);
+    this.head.position.x += 0.04 * Math.sin(bend * 1.2);
     this.head.rotation.set(this.headDip + nod, this.headYaw, -this.lean * 0.5, 'YXZ');
 
-    this.neck.position.copy(this.spine[12]);
-    _t.subVectors(this.spine[13], this.spine[11]).normalize();
+    this.neck.position.copy(this.spine[13]);
+    _t.subVectors(this.spine[14], this.spine[12]).normalize();
     this.neck.quaternion.setFromUnitVectors(_a.set(0, 0, 1), _t);
-    this.neck.scale.setScalar(this.spineRy[12] / 0.047);
+    this.neck.scale.setScalar(this.spineRy[13] / 0.047);
 
     // ---- Tail ----
     this.swishTail(dt, m, gw + gt, gg, down, heading);
