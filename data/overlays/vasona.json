@@ -1,5 +1,5 @@
 {
-  "note": "Things to find in Oak Meadow and Vasona. Keep these few. Placement keys are described in main-street.json, plus: rail (a fraction along the train's run) and lake (a compass direction on the lake shore: 0 north, 0.25 east, 0.5 south, 0.75 west). lookout: true lowers the camera to look south to the mountains. ending: true makes this the closing moment of the wander.",
+  "note": "Things to find in Oak Meadow and Vasona. Keep these few. Placement keys are described in main-street.json, plus: rail (a fraction along the train's run) and lake (a compass direction on the lake shore: 0 north, 0.25 east, 0.5 south, 0.75 west). lookout: true lowers the camera to look south to the mountains. ending: true makes this the closing moment of the wander. shore: true moves a spot down to the nearest lake shore.",
   "spots": [
     {
       "id": "carousel",
@@ -21,7 +21,8 @@
       "kind": "story",
       "title": "Vasona Lake",
       "near": "Vasona Boating - Los Gatos Recereation",
-      "blurb": "Pedal boats, kayaks and little sailboats go out from here in the warm months."
+      "blurb": "Pedal boats, kayaks and little sailboats go out from here in the warm months. There is a rowing boat at the pier.",
+      "shore": true
     },
     {
       "id": "dam",

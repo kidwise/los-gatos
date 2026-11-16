@@ -149,6 +149,14 @@ async function start(): Promise<void> {
   let path: number[] = [];
   controls.onTap = (p) => {
     // On the map view, tapping a place already found takes the cat straight there.
+    if (riding) {
+      // Afloat or aboard, a tap is a heading, not a walk.
+      path = [];
+      marker.position.set(p.x, pos.y + 0.1, p.z);
+      marker.scale.setScalar(Math.max(1, rig.span / 30));
+      markerLife = 1;
+      return;
+    }
     if (rig.span > 55 && journal) {
       const reach = rig.span * 0.045;
       const known = world.spots.find((s) => journal!.isFound(s.id) && Math.hypot(s.x - p.x, s.z - p.z) < reach);
@@ -370,14 +378,29 @@ async function start(): Promise<void> {
     controls.update();
 
     let want = 0;
+    gouacheUniforms.uTime.value += dt;
+    // A ride the player steers, such as the boat, takes the taps and keys the cat would have.
+    if (riding?.steer) {
+      const pace = THREE.MathUtils.lerp(4.2, 13, THREE.MathUtils.smoothstep(rig.span, 30, 200));
+      const keys = controls.keyDirection(dir);
+      if (keys) {
+        controls.target = null;
+        riding.steer(dt, keys.x, keys.z, pace);
+      } else if (controls.target) {
+        const dx = controls.target.x - pos.x, dz = controls.target.z - pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 1.5) riding.steer(dt, dx / d, dz / d, pace * Math.min(1, 0.25 + d / 6));
+        else if (controls.arriving) controls.target = null;
+      }
+    }
     const held = journal?.active || !!riding || opening;
     if (opening) cat.sitNow();
     let moveDir: THREE.Vector3 | null = held ? null : controls.keyDirection(dir);
-    if (held) controls.target = null;
+    if (held && !riding?.steer) controls.target = null;
     if (moveDir) {
       controls.target = null;
       want = controls.running ? TROT : WALK;
-    } else if (controls.target) {
+    } else if (controls.target && !held) {
       if (!controls.arriving) path = [];
       // Drop waypoints as they are reached; a faster cat is allowed to cut each corner wider.
       while (path.length && Math.hypot(path[0] - pos.x, path[1] - pos.z) < Math.max(1.6, speed * 0.22)) path.splice(0, 2);
@@ -433,11 +456,13 @@ async function start(): Promise<void> {
       cat.sitNow();
       speed = 0;
     }
-    const canRide = riding ?? (journal?.active ? null : world.rides.find((r) => r.near(pos)) ?? null);
-    if (canRide !== offered) {
+    // Offer a ride when near one. While riding, offer the way off, if there is somewhere to get off.
+    const canRide = riding ? (riding.canLeave && !riding.canLeave() ? null : riding) : journal?.active ? null : world.rides.find((r) => r.near(pos)) ?? null;
+    const label = canRide ? (riding ? riding.leaveLabel ?? 'Hop off' : canRide.label) : '';
+    if (canRide !== offered || label !== rideButton.textContent) {
       offered = canRide;
       rideButton.classList.toggle('on', !!canRide);
-      if (canRide) rideButton.textContent = riding ? 'Hop off' : canRide.label;
+      rideButton.textContent = label;
     }
 
     if (markerLife > 0) {

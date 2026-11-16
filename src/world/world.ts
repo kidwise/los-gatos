@@ -47,6 +47,11 @@ export interface Ride {
   near(pos: THREE.Vector3): boolean;
   /** Puts the cat's seat position into `out` and returns the way it faces. */
   seat(out: THREE.Vector3): number;
+  /** For a ride the player steers: head this way (a ground direction) at this speed, in metres a second. */
+  steer?(dt: number, dirX: number, dirZ: number, pace: number): void;
+  /** Whether there is somewhere to get off right now. Rides without this can be left at any time. */
+  canLeave?(): boolean;
+  leaveLabel?: string;
   /** True when the rider sits under a roof that should open to show them. */
   roofed?: boolean;
   /** Puts a spot to step off onto into `out`. */

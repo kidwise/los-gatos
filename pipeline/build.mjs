@@ -592,7 +592,7 @@ for (const el of raw.elements) {
 // ---------- Street furniture ----------
 // Trees, lamps, planters, benches and parked cars along the sidewalks, and the plaza's cedar and
 // fountain. Positions are worked out here, once, so the game only has to draw them.
-const props = { lamps: [], planters: [], benches: [], cars: [], boats: [], cedar: null, fountain: null };
+const props = { lamps: [], planters: [], benches: [], cars: [], boats: [], picnics: [], cedar: null, fountain: null };
 {
   const DOWNTOWN = new Set(['primary', 'secondary', 'tertiary']);
   const roadways = lines
@@ -661,6 +661,15 @@ const props = { lamps: [], planters: [], benches: [], cars: [], boats: [], cedar
         }
       }
     }
+  }
+
+  // Picnic tables where the map marks picnic sites, on open ground.
+  for (const el of raw.elements) {
+    if (el.type !== 'node' || el.tags?.tourism !== 'picnic_site') continue;
+    const at = nodes.get(el.id);
+    if (!at || !inBounds(at[0], at[1], -4) || inLake(at[0], at[1]) || nearBuilding(at[0], at[1], 2)) continue;
+    if (roadways.some((o) => distToLine(at[0], at[1], o.line.pts, o.cum, o.total).d < o.line.width / 2 + 1.5)) continue;
+    props.picnics.push(r2(at[0]), r2(ground(at[0], at[1])), r2(at[1]));
   }
 
   // Pedal boats out on the water by the boat rental.
@@ -778,6 +787,17 @@ if (existsSync(overlayPath)) {
     } else if (s.trail !== undefined) {
       const l = longest(lines.filter((r) => r.kind === 'cycleway' && !r.bridge));
       if (l) at = alongLine(l.pts, s.trail);
+    }
+    if (at && s.shore && lakes.length) {
+      // Bring the spot down to the water's edge: the nearest point on a lake shore, a few steps back up the beach.
+      let best = null, bestD = Infinity;
+      for (const l of lakes) {
+        for (const p of resample([...l.pts, l.pts[0]], 3)) {
+          const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+          if (d < bestD) [best, bestD] = [p, d];
+        }
+      }
+      if (best && bestD > 0.5) at = [best[0] + ((at[0] - best[0]) / bestD) * 5, best[1] + ((at[1] - best[1]) / bestD) * 5];
     }
     if (!at || !inBounds(at[0], at[1], -8)) {
       console.warn(`  spot "${s.id}": could not be placed`);

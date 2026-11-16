@@ -5,6 +5,7 @@ import { GROUND_FLOOR, RECESS, UPPER_FLOOR, storefronts, type Kit } from './buil
 import { bench, cafeSet, car, cedar, lamp, planter, type Collider, type Spot } from './corner';
 import { bridgeGhost, millGhost, type Ghost } from './ghosts';
 import { HEROES, fitRectangle } from './heroes';
+import { dressLake } from './lake';
 import { People } from './people';
 import { Batch, signOptions } from './kit';
 import { makeRouter, type Router } from './router';
@@ -22,7 +23,7 @@ interface Pack {
   buildings: { id: number; name?: string; kind: string; levels: number; base: number; cx: number; cz: number; ring: number[]; fronts: number[]; hero?: string; face?: number }[];
   areas: { kind: string; y: number; ring: number[] }[];
   trees: number[];
-  props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; boats?: number[]; cedar: number[] | null; fountain: number[] | null };
+  props?: { lamps: number[]; planters: number[]; benches: number[]; cars: number[]; boats?: number[]; picnics?: number[]; cedar: number[] | null; fountain: number[] | null };
   /** One long run of railway for the train: x, y, z points. */
   train?: number[] | null;
   creekDepth?: number;
@@ -256,13 +257,14 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setIndex(index);
     g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, gouache({ vertexColors: true }));
+    const mesh = new THREE.Mesh(g, gouache({ vertexColors: true, meadow: true }));
     mesh.receiveShadow = true;
     mesh.castShadow = true;
     group.add(mesh);
   }
 
   // ---- Flat ground cover with crisp edges, where the ground really is flat. ----
+  const meadow = new Batch();
   for (const a of pack.areas) {
     const contour: THREE.Vector2[] = [];
     let lo = Infinity, hi = -Infinity;
@@ -277,6 +279,8 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     const out = new Tris();
     const y = lake ? a.y : hi + (a.kind === 'pool' ? 0.05 : 0.025);
     if (lake) {
+      const dock = pack.spots?.find((s) => s.id === 'boats') ?? null;
+      dressLake({ ring: a.ring, level: a.y, kit, group, terrainY, boats: pack.props?.boats ?? [], dockNear: dock });
       // The shore is as far as a cat goes.
       for (let i = 0; i < contour.length; i++) {
         const p = contour[i], q = contour[(i + 1) % contour.length];
@@ -286,7 +290,14 @@ export async function loadRegion(id: string, from: string | null = null): Promis
     for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(contour, [])) {
       out.tri(contour[i].x, y, contour[i].y, contour[j].x, y, contour[j].y, contour[k].x, y, contour[k].y);
     }
-    if (!out.empty) paint.add(out.geometry(), AREA_COLOR[a.kind], 0, 0, 0);
+    // The lake paints its own water; grass goes to the meadow painter; the rest is plain.
+    if (lake || out.empty) continue;
+    (a.kind === 'park' || a.kind === 'grass' || a.kind === 'wood' ? meadow : paint).add(out.geometry(), AREA_COLOR[a.kind], 0, 0, 0);
+  }
+  const lawns = meadow.build(gouache({ vertexColors: true, meadow: true }));
+  if (lawns) {
+    lawns.receiveShadow = true;
+    group.add(lawns);
   }
 
   // ---- Roads, paths and the creek, as layered strips. ----
@@ -591,19 +602,23 @@ export async function loadRegion(id: string, from: string | null = null): Promis
       const box = [corner(-2.35, -0.9), corner(2.35, -0.9), corner(2.35, 0.9), corner(-2.35, 0.9)];
       for (let k = 0; k < 4; k++) walls.push({ ax: box[k][0], az: box[k][1], bx: box[(k + 1) % 4][0], bz: box[(k + 1) % 4][1], y });
     }
-    // Pedal boats out on the lake.
-    const lakeY = pack.areas.find((a) => a.kind === 'lake')?.y ?? 0;
-    const HULLS = [P.persimmon, P.warmWhite, P.butter, P.slateBlue];
-    for (let i = 0; F.boats && i < F.boats.length; i += 4) {
-      stand(F.boats[i], lakeY + 0.15, F.boats[i + 1], F.boats[i + 2], () => {
-        const hull = HULLS[F.boats![i + 3]];
-        paint.box(hull, 0, 0.22, 0, 2.6, 0.44, 1.5);
-        paint.ball(hull, 1.3, 0.22, 0, 0.5, 0.22, 0.75);
-        paint.box(P.warmWhite, -0.2, 0.52, 0, 1.2, 0.16, 1.2);
-        for (const sx of [-0.85, 0.5]) for (const sz of [-0.68, 0.68]) paint.cyl(P.ink, sx, 1.0, sz, 0.03, 0.03, 1.1, 5);
-        paint.box(P.trim, -0.18, 1.58, 0, 1.7, 0.08, 1.6);
-        paint.box(hull, -0.18, 1.5, 0, 1.76, 0.1, 1.66);
+    // Picnic tables in the parks, with someone at a few of them.
+    for (let i = 0; F.picnics && i < F.picnics.length; i += 3) {
+      const x = F.picnics[i], y = F.picnics[i + 1], z = F.picnics[i + 2];
+      const turn = hash(i * 7 + 3) * Math.PI;
+      stand(x, y + 0.15, z, turn, () => {
+        paint.box(0x9a7758, 0, 0.76, 0, 1.9, 0.07, 0.8);
+        for (const s of [-1, 1]) {
+          paint.box(0x9a7758, 0, 0.46, s * 0.72, 1.9, 0.06, 0.3);
+          paint.box(0x7a5a45, s * 0.7, 0.38, 0, 0.08, 0.76, 1.5);
+        }
+        if (hash(i * 3 + 1) < 0.35) paint.box([P.persimmon, P.navy, P.warmWhite][i % 3], 0.1, 0.81, 0, 0.9, 0.02, 0.6);
       });
+      posts.push({ x, y, z, r: 1.15 });
+      if (hash(i * 11 + 5) < 0.3) {
+        const sx = Math.sin(turn), sz = Math.cos(turn);
+        for (const s of [-1, 1]) seats.push({ x: x + s * 0.72 * sx, y: y - 0.02, z: z + s * 0.72 * sz, heading: turn + (s > 0 ? Math.PI : 0) });
+      }
     }
     if (F.cedar) {
       const [x, y, z] = F.cedar;
@@ -744,6 +759,7 @@ export async function loadRegion(id: string, from: string | null = null): Promis
   // Points along open water and along the freeway, for judging how near each is.
   const waterPts: number[] = [];
   for (const w of pack.water) for (let i = 0; i < w.pts.length; i += 3) waterPts.push(w.pts[i], w.pts[i + 2]);
+  for (const a of pack.areas) if (a.kind === 'lake') for (let i = 0; i < a.ring.length; i += 8) waterPts.push(a.ring[i], a.ring[i + 1]);
   const freewayPts: number[] = [];
   for (const r of pack.roads) {
     if (r.kind === 'motorway') for (let i = 0; i < r.pts.length; i += 3) freewayPts.push(r.pts[i], r.pts[i + 2]);
